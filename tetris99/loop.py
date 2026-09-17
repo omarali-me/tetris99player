@@ -152,11 +152,12 @@ class Player:
             self.bot.close()
 
 
-def frame_states(source: str, layout: Layout) -> tuple[Iterable[FrameState], object]:
+def frame_states(source: str, layout: Layout, garbage_every: int = 15) -> tuple[Iterable[tuple[object, FrameState]], object]:
+    """Yields (raw frame or None, FrameState)."""
     if source == "synthetic":
         from .sim_env import SimEnv
-        env = SimEnv(seed=0, max_pieces=200, garbage_every=5)
-        return env.frames(), env
+        env = SimEnv(seed=0, max_pieces=200, garbage_every=garbage_every)
+        return ((None, fs) for fs in env.frames()), env
     if Path(source).is_file():
         from .capture import VideoFile
         src = VideoFile(source)
@@ -164,7 +165,64 @@ def frame_states(source: str, layout: Layout) -> tuple[Iterable[FrameState], obj
         from .capture import CaptureCard
         src = CaptureCard(int(source))
         log.info("capture: %s", src.describe())
-    return (read_frame(f, layout) for f in src.frames()), src
+    return ((f, read_frame(f, layout)) for f in src.frames()), src
+
+
+class LiveView:
+    """Capture feed with the tracker's belief drawn over it. Keys: q quit, s save frame."""
+
+    COLORS = {"I": (201, 183, 0), "O": (0, 194, 242), "T": (191, 63, 160), "S": (75, 180, 60),
+              "Z": (47, 51, 224), "J": (214, 75, 47), "L": (26, 140, 242), "G": (173, 161, 154)}
+
+    def __init__(self, layout: Layout, player: "Player"):
+        import cv2
+        self.cv2, self.layout, self.player = cv2, layout, player
+        self.last_line = ""
+        Path("recordings").mkdir(exist_ok=True)
+
+    def show(self, frame, fs: FrameState) -> bool:
+        """Returns False when the user quits."""
+        cv2, L = self.cv2, self.layout
+        vis = frame.copy()
+        st = self.player.tracker.state
+        cw, ch = int(L.cell_w), int(L.cell_h)
+        for (x, y) in st.locked:
+            if y < 20:
+                px, py = L.cell_center(19 - y, x)
+                cv2.rectangle(vis, (px - cw // 2 + 4, py - ch // 2 + 4), (px + cw // 2 - 4, py + ch // 2 - 4), (255, 255, 255), 1)
+        for (x, y) in st.active:
+            if y < 20:
+                px, py = L.cell_center(19 - y, x)
+                cv2.circle(vis, (px, py), 6, (0, 255, 0), -1)
+        for r in range(20):
+            for c in range(10):
+                cell = fs.grid[r][c].value
+                if cell in self.COLORS:
+                    px, py = L.cell_center(r, c)
+                    cv2.circle(vis, (px, py), 3, self.COLORS[cell], -1)
+        b = L.board
+        cv2.rectangle(vis, (b.x, b.y), (b.x + b.w, b.y + b.h), (0, 255, 0), 1)
+        hud = [
+            f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
+            f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
+            self.last_line,
+            "white boxes = locked stack   green dots = active piece   |   s save frame   q quit",
+        ]
+        for i, t in enumerate(hud):
+            cv2.putText(vis, t, (20, 40 + 32 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4)
+            cv2.putText(vis, t, (20, 40 + 32 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (60, 255, 60), 2)
+        cv2.imshow("tetris99 live", cv2.resize(vis, (1280, 720)))
+        k = cv2.waitKey(1) & 0xFF
+        if k == ord("q"):
+            return False
+        if k == ord("s"):
+            p = f"recordings/frame_{int(time.time())}.png"
+            cv2.imwrite(p, frame)
+            log.info("saved %s", p)
+        return True
+
+    def close(self):
+        self.cv2.destroyAllWindows()
 
 
 def main() -> None:
@@ -174,6 +232,8 @@ def main() -> None:
     ap.add_argument("--port", default=Settings().serial_port)
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--max-nodes", type=int, default=100_000)
+    ap.add_argument("--show", action="store_true", help="show the capture feed with the tracker's view drawn over it")
+    ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
     ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
     ap.add_argument("-v", action="store_true")
@@ -182,7 +242,7 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG if args.v else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     layout = Layout.load()
-    frames, src = frame_states(args.source, layout)
+    frames, src = frame_states(args.source, layout, args.garbage_every)
 
     output: Output
     if args.source == "synthetic":
@@ -194,17 +254,29 @@ def main() -> None:
 
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
                     think_ms=args.think if args.source == "synthetic" else 0)
+    view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
+
+    class _Hook(logging.Handler):  # mirror the last decision line into the overlay
+        def emit(self, record):
+            if view and record.levelno >= logging.INFO:
+                view.last_line = record.getMessage()[:110]
+    log.addHandler(_Hook())
+
     t0 = time.perf_counter()
     n = 0
     try:
-        for fs in frames:
+        for frame, fs in frames:
             n += 1
             player.step(fs)
+            if view and not view.show(frame, fs):
+                break
     except KeyboardInterrupt:
         pass
     finally:
         player.close()
         src.close()
+        if view:
+            view.close()
     dt = time.perf_counter() - t0
     log.info("done: %d frames, %d pieces, %.1fs", n, player.pieces, dt)
     if args.source == "synthetic":
