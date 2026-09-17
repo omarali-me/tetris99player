@@ -172,11 +172,13 @@ class PlanStep:
     piece: str
     cells: list[tuple[int, int]]
     cleared: list[int]   # rows this placement clears
+    tspin: str = ""      # "", "mini", "full"
 
     @classmethod
     def from_c(cls, p: CCPlanPlacement) -> "PlanStep":
         return cls(PIECES[p.piece], [(p.expected_x[i], p.expected_y[i]) for i in range(4)],
-                   [int(p.cleared_lines[i]) for i in range(4) if p.cleared_lines[i] >= 0])
+                   [int(p.cleared_lines[i]) for i in range(4) if p.cleared_lines[i] >= 0],
+                   {0: "", 1: "mini", 2: "full"}[int(p.tspin)])
 
 
 def valid_sequence(pieces: "str | list[str]", hold: str | None = None) -> bool:

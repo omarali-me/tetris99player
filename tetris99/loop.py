@@ -14,36 +14,12 @@ from typing import Iterable, Protocol
 
 from .config import Layout, Settings, find_serial_port
 from .engine.board import Board
+from .engine.coach import MODES, map_plan, plan_from, rows_to_original
 from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights, valid_sequence
 from .engine.executor import Action, compile_move
 from .vision.board import FrameState, read_frame
 from .vision.tracker import Spawn, Tracker, board_cells, to_board
 
-
-def rows_to_original(y: int, cleared_orig: list[int]) -> int:
-    """Map a row index from a board after some rows were cleared back to the board before.
-    `cleared_orig` are the cleared rows in original coordinates, ascending."""
-    for r in cleared_orig:
-        if r <= y:
-            y += 1
-    return y
-
-
-def map_plan(steps: list[PlanStep], first_number: int = 1) -> tuple[list[tuple[str, list[tuple[int, int]]]], list[tuple[int, int]]]:
-    """Cold Clear gives each step in the coordinates of the board as it is when that piece is
-    placed, i.e. after earlier clears. Map everything onto the board as it is at the FIRST of
-    these steps. Returns ([(piece, cells)], [(row, step number that clears it)])."""
-    cleared_orig: list[int] = []
-    laid: list[tuple[str, list[tuple[int, int]]]] = []
-    clears: list[tuple[int, int]] = []
-    for i, step in enumerate(steps, start=first_number):
-        cells = [(x, rows_to_original(y, cleared_orig)) for x, y in step.cells]
-        laid.append((step.piece, cells))
-        # all of this step's cleared rows share the same (pre-clear) coordinates
-        new = [rows_to_original(r, cleared_orig) for r in step.cleared]
-        clears += [(r, i) for r in new]
-        cleared_orig = sorted(cleared_orig + new)
-    return laid, clears
 
 log = logging.getLogger("loop")
 
@@ -197,12 +173,6 @@ class Player:
         return actions
 
     # ------------------------------------------------------------------ coach (trainer) mode
-    MODES = {
-        "normal":   {"weights": None, "pcloop": 0},
-        "tspin":    {"weights": str(Path(__file__).resolve().parent.parent / "config/weights_tspin.json"), "pcloop": 0},
-        "allclear": {"weights": {"perfect_clear": 2000}, "pcloop": 1},
-    }
-
     def set_mode(self, mode: str) -> None:
         self.mode = mode
         log.info("coach mode: %s", mode)
@@ -214,27 +184,12 @@ class Player:
         if not st.current or not st.queue:
             log.warning("no piece information yet; wait for a piece to spawn, then press space")
             return []
-        seq = [st.current] + list(st.queue)
-        if not valid_sequence(seq, st.hold):
-            log.warning("impossible reading (piece=%s hold=%s queue=%s); try again", st.current, st.hold, "".join(st.queue))
+        plan = plan_from(to_board(st.locked), st.current, list(st.queue), st.hold, self.mode,
+                         think_ms=think_ms, max_steps=max_steps, threads=self.threads, max_nodes=self.max_nodes)
+        if plan is None:
+            log.warning("no plan (impossible reading or bot gave nothing); try again")
             return []
-        cfg = self.MODES[self.mode]
-        weights = cfg["weights"]
-        if isinstance(weights, str):
-            weights = load_weights(weights)
-        board = to_board(st.locked)
-        with ColdClear("".join(seq), threads=self.threads, max_nodes=self.max_nodes, board=board,
-                       hold=st.hold, speculate=False, weights=weights, pcloop=cfg["pcloop"]) as bot:
-            time.sleep(think_ms / 1000)
-            bot.request_move(0)
-            deadline = time.perf_counter() + 2.0
-            move = None
-            while time.perf_counter() < deadline:
-                status, move = bot.poll_move(max_steps)
-                if status is not PollStatus.WAITING:
-                    break
-                time.sleep(0.002)
-            steps = list(bot.plan) if move else []
+        steps = plan.steps
         self.plan_steps = steps
         self.laid_done = 0
         self.visible = None

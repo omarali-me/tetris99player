@@ -7,6 +7,8 @@ Switch dock ──HDMI──▶ capture card ──USB──▶ PC (OpenCV → s
 ```
 
 ## Learning
+`tools/sandbox.py` is a keyboard Tetris sandbox on the project's engine: coach layouts (k), an explorer of every placement of the current piece (e) with Cold Clear evaluation (v), undo/redo (u/r), pause (p), and T-spin / perfect-clear lessons (l) that explain the SRS kick used.
+
 `docs/field-guide.html` explains Cold Clear's internals, the USB controller emulation, and the vision pipeline. Open it in a browser.
 
 ## Layout
@@ -17,6 +19,8 @@ Switch dock ──HDMI──▶ capture card ──USB──▶ PC (OpenCV → s
 - `firmware/switch_hid/` – Arduino sketch that emulates a HORI wired pad
 - `tools/preview.py` – live overlay to check capture and tune vision
 - `tools/calibrate.py` – click-to-calibrate screen layout
+- `tools/sandbox.py` – keyboard Tetris with coach, explorer, undo and lessons
+- `tetris99/engine/game.py` – playable game model (7-bag, hold, SRS kicks, T-spin detection, undo/redo)
 
 ## Setup
 ```
