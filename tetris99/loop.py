@@ -54,6 +54,10 @@ class Player:
         self.plan_len = plan_len
         self.target: tuple[str, list[tuple[int, int]], bool] | None = None  # (piece, cells, hold first)
         self.plan: list[PlanStep] = []
+        # trainer: the committed plan the human is executing, and how far along it they are
+        self.committed: list[PlanStep] = []
+        self.committed_idx = 0
+        self.hold_pending: tuple[str, set] | None = None  # spawn we expect after the human presses hold
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
         self.threads, self.max_nodes = threads, max_nodes
@@ -107,6 +111,8 @@ class Player:
             self.target = None
             self.plan = []
             return None
+        if self.trainer:
+            return self._trainer_spawn(sp)
         if self.bot is None:
             self._launch(sp)
         else:
@@ -164,6 +170,73 @@ class Player:
                      " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth,
                      f", incoming {sp.incoming}" if sp.incoming else "")
         return actions
+
+    # ------------------------------------------------------------------ trainer mode
+    def remaining_plan(self) -> list[PlanStep]:
+        return self.committed[self.committed_idx:]
+
+    def _hold_needed(self, sp: Spawn, wanted: str) -> bool | None:
+        """How the human gets piece `wanted` from this spawn: False = it is the spawned piece,
+        True = press hold first, None = impossible (plan no longer applies)."""
+        if wanted == sp.piece:
+            return False
+        if sp.hold is not None:
+            return True if wanted == sp.hold else None
+        return True if (sp.queue and wanted == sp.queue[0]) else None
+
+    def _show_step(self, sp: Spawn, step: PlanStep, hold_first: bool) -> None:
+        self.target = (step.piece, list(step.cells), hold_first)
+        board = Board(list(sp.locked.rows))
+        board.place(step.cells)
+        self.expected = board
+        self.tracker.expected_locked = board_cells(board)
+        self.hold_pending = (step.piece, board_cells(sp.locked)) if hold_first else None
+        n = len(self.committed) - self.committed_idx - 1
+        log.info("#%d place %s%s at %s  (%d more in plan)", self.pieces, step.piece,
+                 " (press HOLD first)" if hold_first else "", sorted(step.cells), n)
+
+    def _replan(self, sp: Spawn) -> None:
+        self._launch(sp)
+        move = self._get_move(sp.incoming)
+        if move is None or not self.plan:
+            log.warning("bot gave no plan; will retry at the next spawn")
+            self.committed, self.committed_idx, self.target = [], 0, None
+            return
+        self.committed = self.plan[: self.plan_len]
+        self.committed_idx = 0
+        log.info("new plan: %s  (depth %d)", " ".join(st.piece for st in self.committed), move.depth)
+
+    def _trainer_spawn(self, sp: Spawn) -> None:
+        locked = board_cells(sp.locked)
+        # the spawn caused by the hold press we asked for: same board, swapped-in piece
+        if self.hold_pending and self.hold_pending == (sp.piece, locked):
+            self.hold_pending = None
+            self.tracker.expected_locked = board_cells(self.expected) if self.expected else None
+            return
+        self.hold_pending = None
+
+        board_ok = self.expected is not None and locked == board_cells(self.expected)
+        if not (self.remaining_plan() and board_ok):
+            if self.committed and not board_ok:
+                log.info("board differs from the plan (misplaced piece or garbage): replanning")
+            self._replan(sp)
+        if not self.remaining_plan():
+            return
+        step = self.remaining_plan()[0]
+        hold_first = self._hold_needed(sp, step.piece)
+        if hold_first is None:
+            log.info("plan wants %s but it is not available (spawned %s, hold %s): replanning", step.piece, sp.piece, sp.hold)
+            self._replan(sp)
+            if not self.remaining_plan():
+                return
+            step = self.remaining_plan()[0]
+            hold_first = self._hold_needed(sp, step.piece)
+            if hold_first is None:
+                self.committed, self.target = [], None
+                return
+        self.pieces += 1
+        self._show_step(sp, step, hold_first)
+        self.committed_idx += 1
 
     def step(self, fs: FrameState) -> list[Action] | None:
         sp = self.tracker.update(fs)
@@ -236,7 +309,7 @@ class LiveView:
             return (S(px) - cw // 2 + inset, S(py) - ch // 2 + inset), (S(px) + cw // 2 - inset, S(py) + ch // 2 - inset)
 
         # trainer: future placements faint, current target bold
-        for i, step in enumerate(self.player.plan[1:3], start=1):
+        for i, step in enumerate(self.player.remaining_plan(), start=1):
             col = self.COLORS.get(step.piece, (200, 200, 200))
             for (x, y) in step.cells:
                 if y < 20:
@@ -262,7 +335,7 @@ class LiveView:
             f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
             f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
             self.last_line,
-            ("bold outline = place the piece here   faint 2/3 = next planned pieces   |   s save   q quit"
+            (f"bold outline = place the piece here   faint 2..{self.player.plan_len} = rest of the plan ({len(self.player.remaining_plan())} left)   |   s save   q quit"
              if self.player.trainer else
              "white boxes = locked stack   green dots = active piece   |   s save frame   q quit"),
         ]
@@ -292,6 +365,7 @@ def main() -> None:
     ap.add_argument("--max-nodes", type=int, default=100_000)
     ap.add_argument("--show", action="store_true", help="show the capture feed with the tracker's view drawn over it")
     ap.add_argument("--trainer", action="store_true", help="you play; the bot's intended placements are drawn on the feed (implies --show)")
+    ap.add_argument("--plan", type=int, default=4, help="trainer: pieces per committed plan (current + ahead); a new plan is made after these are placed")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
     ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
@@ -315,8 +389,8 @@ def main() -> None:
         args.show = True
         output = DryRunOutput()
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
-                    think_ms=args.think if args.source == "synthetic" else (150 if args.trainer else 0),
-                    trainer=args.trainer)
+                    think_ms=args.think if args.source == "synthetic" else (300 if args.trainer else 0),
+                    trainer=args.trainer, plan_len=args.plan)
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 
     class _Hook(logging.Handler):  # mirror the last decision line into the overlay
