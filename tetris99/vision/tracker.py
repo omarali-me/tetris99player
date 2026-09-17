@@ -37,6 +37,7 @@ class Spawn:
     hold: str | None
     queue: list[str]
     garbage_arrived: bool  # locked board differed from what we predicted
+    new_pieces: list[str]  # queue entries revealed by this spawn (0, 1 or 2 pieces)
 
 
 @dataclass
@@ -82,9 +83,17 @@ def _component(start: Coord, cells: set[Coord]) -> set[Coord]:
     return seen
 
 
-def split_spawned(cells: dict[Coord, Cell], piece: str) -> tuple[set[Coord], set[Coord]]:
+def split_spawned(cells: dict[Coord, Cell], piece: str,
+                  expected_locked: set[Coord] | None = None) -> tuple[set[Coord], set[Coord]]:
     """At spawn time, separate the freshly spawned piece from the locked stack.
-    Returns (active, locked). Active may have fewer than 4 cells (rows above 19 are hidden)."""
+    Returns (active, locked). Active may have fewer than 4 cells (rows above 19 are hidden).
+    If the caller predicted the locked board and the frame agrees with it, trust that first: it is
+    immune to the spawned piece touching same-colored stack cells."""
+    visible = set(cells)
+    if expected_locked is not None and expected_locked <= visible:
+        extra = visible - expected_locked
+        if len(extra) <= 4 and all(cells[c] is Cell(piece) for c in extra):
+            return extra, expected_locked
     color = Cell(piece)
     candidates = {c for c, k in cells.items() if k is color and c[1] in SPAWN_ROWS and c[0] in SPAWN_COLS}
     best: set[Coord] = set()
@@ -104,6 +113,8 @@ class Tracker:
         self.confirm_frames = confirm_frames
         self._pending_queue: list[str] | None = None
         self._pending_count = 0
+        self._pending_hold: str | None = None
+        self._pending_hold_count = 0
         self.expected_locked: set[Coord] | None = None  # set by the controller after a placement
 
     def _stable_queue(self, queue: list[str]) -> list[str] | None:
@@ -117,6 +128,17 @@ class Tracker:
             self._pending_queue, self._pending_count = queue, 1
         return queue if self._pending_count >= self.confirm_frames else None
 
+    def _stable_hold(self, hold: str | None) -> bool:
+        """True once a changed hold reading has been seen N times in a row."""
+        if hold == self.state.hold:
+            self._pending_hold, self._pending_hold_count = None, 0
+            return False
+        if hold == self._pending_hold:
+            self._pending_hold_count += 1
+        else:
+            self._pending_hold, self._pending_hold_count = hold, 1
+        return self._pending_hold_count >= self.confirm_frames
+
     def update(self, fs: FrameState) -> Spawn | None:
         st = self.state
         cells = grid_cells(fs.grid)
@@ -127,33 +149,40 @@ class Tracker:
 
         new_queue = self._stable_queue(queue)
         spawned: str | None = None
+        new_pieces: list[str] = []
         if new_queue is not None:
             if not st.queue:
                 spawned = None  # first reading; no piece info yet
             elif new_queue[:-1] == st.queue[1:]:
                 spawned = st.queue[0]
+                new_pieces = new_queue[-1:]
             elif new_queue[:-2] == st.queue[2:]:
                 # hold used on an empty hold slot: queue advanced by two
                 spawned = st.queue[1]
+                new_pieces = new_queue[-2:]
             else:
                 spawned = st.queue[0]  # misread or game start; best effort
+                new_pieces = list(new_queue)
             st.queue = new_queue
             self._pending_queue, self._pending_count = None, 0
-        elif hold != st.hold and hold is not None and st.hold is not None and st.current:
+        hold_changed = self._stable_hold(hold)
+        if spawned is None and hold_changed and queue == st.queue and hold is not None and st.hold is not None and st.current:
             # hold swap with a non-empty slot: the old hold piece spawns, queue unchanged
             spawned, st.hold = st.hold, hold
-        if hold is not None and hold != st.hold and spawned is None:
-            st.hold = hold
-        if spawned is not None and hold is not None:
+        elif spawned is not None:
+            if hold is not None:
+                st.hold = hold
+        elif hold_changed:
             st.hold = hold
 
         if spawned is not None:
-            active, locked = split_spawned(cells, spawned)
+            self._pending_hold, self._pending_hold_count = None, 0
+            active, locked = split_spawned(cells, spawned, self.expected_locked)
             garbage = self.expected_locked is not None and locked != self.expected_locked
             self.expected_locked = None
             st.locked, st.active, st.current = locked, active, spawned
             st.spawns += 1
-            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage)
+            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces)
 
         # between spawns: attribute non-locked cells to the active piece
         visible = set(cells)

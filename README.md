@@ -31,6 +31,13 @@ git clone --depth 1 https://github.com/MinusKelvin/cold-clear third_party/cold-c
 ```
 The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-bag game against the board model.
 
+## Running
+```
+.venv/bin/python -m tetris99.loop --source synthetic            # offline, fake Switch, prints decisions
+.venv/bin/python -m tetris99.loop --source recordings/game.mp4  # dry run on a recording (logs actions)
+.venv/bin/python -m tetris99.loop --source 4 --output serial    # live: capture device 4 -> Arduino
+```
+
 ## Status
 - [x] project skeleton, board model, serial protocol, firmware sketch
 - [ ] verify capture card and calibrate layout on real frames
@@ -38,5 +45,5 @@ The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-ba
 - [ ] tune color thresholds on real frames
 - [x] Cold Clear integration and offline simulator
 - [x] input executor: Cold Clear movements -> presses with DAS, replay-verified
-- [ ] main loop (capture -> tracker -> Cold Clear -> executor) with dry-run mode
+- [x] main loop with dry-run and synthetic modes (`python -m tetris99.loop --source synthetic`)
 - [ ] closed loop vs CPU battle mode

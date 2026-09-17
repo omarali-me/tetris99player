@@ -80,3 +80,18 @@ def test_queue_debounce():
     assert tr.update(render(board, p, None, list("SZJLOI"))) is None  # one frame: not yet
     ev = tr.update(render(board, p, None, list("SZJLOI")))
     assert ev and ev.piece == "T"
+
+
+def test_hold_change_alone_does_not_fire_before_queue_settles():
+    """Real capture: after our hold press the hold box and queue may not update on the same frame."""
+    tr = Tracker(confirm_frames=2)
+    board = Board()
+    for _ in range(2):
+        tr.update(render(board, None, None, list("TSZJLO")))
+    for _ in range(2):
+        tr.update(render(board, FallingPiece.spawn("T", board), None, list("SZJLOI")))
+    # hold from empty: frame shows hold=T but queue not yet redrawn -> no event
+    assert tr.update(render(board, FallingPiece.spawn("S", board), "T", list("SZJLOI"))) is None
+    assert tr.update(render(board, FallingPiece.spawn("S", board), "T", list("ZJLOIT"))) is None  # 1st confirm
+    ev = tr.update(render(board, FallingPiece.spawn("S", board), "T", list("ZJLOIT")))
+    assert ev and ev.piece == "S" and ev.hold == "T" and ev.new_pieces == ["T"]
