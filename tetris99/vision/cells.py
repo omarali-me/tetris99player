@@ -4,9 +4,10 @@ Tetris 99 uses guideline colors. Values are HSV hue ranges (OpenCV hue is 0-179)
 Ghost pieces are the same hue but much dimmer/less saturated; garbage is gray.
 Thresholds were measured on real 1080p capture frames (2026-09-17). Observed medians:
   I 91 · L 9-11 · O 25-26 · S 49-50 · J ~124 · T 140-141 · Z 171 (hue), sat 193-255, val 176-223.
-Grey (KO'd board) cells: sat 0-117, val 106-234. HUD overlays drawn over the top rows (the
-Targeting widget) reach sat ~115 but val <= 101, so anything coloured but dimmer than
-VAL_MIN_BLOCK is treated as an overlay/ghost and ignored.
+Garbage blocks in the playfield: hue ~30, sat 0-5, val 111, and perfectly flat at the cell centre.
+HUD overlays drawn over the top rows (the Targeting widget): the highlighted pill is sat ~100 /
+val <= 101 (coloured but dim -> ignored as ghost), the text is grey but high-variance. So garbage
+must be nearly unsaturated, bright enough, and flat; anything else grey is empty.
 """
 from __future__ import annotations
 
@@ -41,9 +42,11 @@ HUE_RANGES: dict[Cell, tuple[int, int]] = {
 }
 Z_WRAP_MIN = 164
 
-SAT_MIN = 130         # coloured blocks are >= 190; greys <= 117
-VAL_MIN_BLOCK = 150   # coloured but dimmer than this: ghost outline or a HUD overlay -> ignored
-VAL_MIN_GARBAGE = 115 # grey and at least this bright: garbage block (HUD text is ~75)
+SAT_MIN = 130           # coloured blocks are >= 190
+VAL_MIN_BLOCK = 150     # coloured but dimmer than this: ghost outline or a HUD overlay -> ignored
+GARBAGE_SAT_MAX = 60    # garbage is sat 0-5 (up to ~45 under the animated attack ray); the Targeting pill is ~100
+VAL_MIN_GARBAGE = 95    # garbage is val 111; HUD text medians stay <= ~75
+GARBAGE_STD_MAX = 12    # garbage centres are flat (std 0); text is ~40
 VAL_MAX_EMPTY = 60
 
 
@@ -54,7 +57,8 @@ def classify_patch(bgr_patch: np.ndarray) -> Cell:
     if v < VAL_MAX_EMPTY:
         return Cell.EMPTY
     if s < SAT_MIN:
-        return Cell.GARBAGE if v >= VAL_MIN_GARBAGE else Cell.EMPTY
+        flat = float(hsv[..., 2].std()) <= GARBAGE_STD_MAX
+        return Cell.GARBAGE if (s <= GARBAGE_SAT_MAX and v >= VAL_MIN_GARBAGE and flat) else Cell.EMPTY
 
     piece = Cell.EMPTY
     if h >= Z_WRAP_MIN:
