@@ -1,10 +1,9 @@
-"""Trainer mode against the fake Switch, with a 'human' that follows the plan exactly, and one
-that deviates once."""
+"""Coach mode: on demand, lay out placements for every known piece; rows mapped through clears."""
 import pytest
 
 from tetris99.engine import coldclear
-from tetris99.engine.piece import FallingPiece
-from tetris99.loop import Player
+from tetris99.engine.board import Board
+from tetris99.loop import Player, rows_to_original
 from tetris99.sim_env import SimEnv
 
 try:
@@ -13,56 +12,49 @@ except FileNotFoundError:
     pytest.skip("libcold_clear.so not built", allow_module_level=True)
 
 
-def human_places(env: SimEnv, target) -> None:
-    """Do what the overlay asks: optional hold, then lock the piece on the target cells."""
-    kind, cells, hold_first = target
-    g = env.game
-    if hold_first:
-        cur = env.piece.kind
-        if g.hold is None:
-            g.hold = cur; g.advance(); g.take_unreported()
-        else:
-            g.hold = cur
-    assert g.board.fits(cells)
-    g.lines += g.board.place(cells)
-    g.pieces_placed += 1
-    env.piece = None
-    g.advance(); g.take_unreported()
+def test_rows_to_original():
+    assert rows_to_original(0, []) == 0
+    assert rows_to_original(0, [0]) == 1          # row 0 was cleared: new row 0 was row 1
+    assert rows_to_original(0, [0, 1]) == 2
+    assert rows_to_original(3, [0, 5]) == 4       # only clears at or below count
+    assert rows_to_original(5, [0, 5]) == 7       # row 6 -> then cleared 5 pushes to 7
 
 
-def run(follow_every: int | None, pieces: int = 24):
-    env = SimEnv(seed=1, max_pieces=pieces, garbage_every=0)
-    player = Player(env, threads=1, max_nodes=5000, think_ms=30, trainer=True, plan_len=4)
-    replans = 0
-    orig = player._replan
-    def counting(sp):
-        nonlocal replans; replans += 1; orig(sp)
-    player._replan = counting
-    placed = 0
-    seen = 0
-    for fs in env.frames():
-        player.step(fs)
-        if env.piece is not None and player.target and player.pieces > seen:  # act once per instruction
-            seen = player.pieces
-            placed += 1
-            if follow_every and placed % follow_every == 0:
-                # deviate: drop the spawned piece straight down instead
-                p = env.piece; p.sonic_drop(env.game.board)
-                env.game.board.place(p.cells()); env.game.pieces_placed += 1; env.piece = None
-                env.game.advance(); env.game.take_unreported()
-            else:
-                human_places(env, player.target)
+def apply_layout(board: Board, laid) -> None:
+    """Every laid-out placement must be legal on the board as it stands at that point,
+    once earlier placements and their clears are applied (rows given in original coordinates)."""
+    b = Board(list(board.rows))
+    for piece, cells in laid:
+        assert b.fits(cells), (piece, cells)
+        b.place(cells)
+
+
+def test_plan_now_lays_out_known_pieces():
+    env = SimEnv(seed=2, max_pieces=5, garbage_every=0)
+    player = Player(env, threads=1, max_nodes=20000, trainer=True)
+    frames = env.frames()
+    for _ in range(4):
+        player.step(next(frames))
+    assert player.tracker.state.current
+    laid = player.plan_now(think_ms=100)
+    assert 5 <= len(laid) <= 8
+    known = set([player.tracker.state.current] + player.tracker.state.queue + ([player.tracker.state.hold] if player.tracker.state.hold else []))
+    assert all(p in known for p, _ in laid)
     player.close()
-    return env, replans
 
 
-def test_plan_is_kept_while_followed():
-    env, replans = run(follow_every=None)
-    assert env.game.pieces_placed == 24
-    assert replans <= 24 // 4 + 1   # one plan per four pieces, plus the first
-
-
-def test_deviation_triggers_replan():
-    env, replans = run(follow_every=5)
-    assert env.game.pieces_placed == 24
-    assert replans > 24 // 4 + 1
+def test_layout_rows_survive_clears():
+    # A board where the first placement clears a line: later placements' rows must be mapped up.
+    env = SimEnv(seed=2, max_pieces=5, garbage_every=0)
+    b = env.game.board
+    b.rows[0] = 0b1111111100  # bottom row needs columns 0-1 (an O or a vertical piece fills it)
+    b.rows[1] = 0b1111111100
+    player = Player(env, threads=1, max_nodes=20000, trainer=True)
+    frames = env.frames()
+    for _ in range(4):
+        player.step(next(frames))
+    laid = player.plan_now(think_ms=200)
+    assert laid
+    # legal in sequence on the ORIGINAL board (this is what mapping guarantees)
+    apply_layout(Board(list(b.rows)), laid)
+    player.close()

@@ -45,7 +45,7 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 .venv/bin/python -m tetris99.loop --source recordings/game.mp4  # dry run on a recording (logs actions)
 .venv/bin/python -m tetris99.loop --source 4 --output serial    # live: capture device 4 -> Arduino
 .venv/bin/python tools/gamepad.py                               # on-screen controller (mouse or keyboard) -> Arduino, for menus
-.venv/bin/python -m tetris99.loop --source 6 --trainer          # you play; the bot's plan (current + 3 ahead) is drawn on the feed
+.venv/bin/python -m tetris99.loop --source 6 --trainer          # coach: you play; space lays out placements for all known pieces (t/a/n = T-spin / all-clear / normal)
 ```
 
 ## Status

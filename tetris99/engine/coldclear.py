@@ -210,7 +210,8 @@ class ColdClear:
     def __init__(self, queue: str = "", *, threads: int = 2, max_nodes: int = 100_000,
                  board: Board | None = None, hold: str | None = None, bag_remain: str | None = None,
                  speculate: bool = True, fast_weights: bool = False,
-                 weights: "dict | str | Path | None" = None):
+                 weights: "dict | str | Path | None" = None, pcloop: int = 0):
+        """pcloop: 0 off, 1 CC_PC_FASTEST, 2 CC_PC_ATTACK (perfect-clear solver from an empty board)."""
         if not valid_sequence(queue, hold):
             raise ValueError(f"impossible piece sequence for 7-bag: hold={hold} queue={queue}")
         L = lib()
@@ -219,6 +220,7 @@ class ColdClear:
         self.opts.threads = threads
         self.opts.max_nodes = max_nodes
         self.opts.speculate = speculate
+        self.opts.pcloop = pcloop
         self.weights = CCWeights()
         (L.cc_fast_weights if fast_weights else L.cc_default_weights)(C.byref(self.weights))
         if weights is not None:

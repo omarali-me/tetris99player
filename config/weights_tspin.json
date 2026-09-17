@@ -1,0 +1,9 @@
+{
+  "_about": "Coach 'T-spin' mode: chase T-spin doubles and triples, keep T pieces for spins, care less about Tetrises.",
+  "tspin1": 200, "tspin2": 900, "tspin3": 1200,
+  "mini_tspin1": -400, "mini_tspin2": -300,
+  "tslot": [20, 320, 420, 900],
+  "wasted_t": -450,
+  "clear4": 150, "clear1": -200, "clear2": -150, "clear3": -100,
+  "back_to_back": 80
+}
