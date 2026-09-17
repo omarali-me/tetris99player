@@ -14,7 +14,7 @@ from typing import Iterable, Protocol
 
 from .config import Layout, Settings, find_serial_port
 from .engine.board import Board
-from .engine.coldclear import ColdClear, Move, PollStatus, load_weights
+from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights
 from .engine.executor import Action, compile_move
 from .vision.board import FrameState, read_frame
 from .vision.tracker import Spawn, Tracker, board_cells
@@ -47,9 +47,13 @@ class Player:
     """Drives one game. Feed FrameStates via step(); it returns the actions it issued, if any."""
 
     def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
-                 weights: dict | None = None):
+                 weights: dict | None = None, trainer: bool = False, plan_len: int = 4):
         self.output = output
         self.weights = weights
+        self.trainer = trainer          # a human executes the moves; we only display them
+        self.plan_len = plan_len
+        self.target: tuple[str, list[tuple[int, int]], bool] | None = None  # (piece, cells, hold first)
+        self.plan: list[PlanStep] = []
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
         self.threads, self.max_nodes = threads, max_nodes
@@ -80,8 +84,9 @@ class Player:
         self.bot.request_move(incoming)
         deadline = time.perf_counter() + 2.0
         while True:
-            status, move = self.bot.poll_move()
+            status, move = self.bot.poll_move(self.plan_len)
             if status is PollStatus.MOVE_PROVIDED:
+                self.plan = list(self.bot.plan)
                 return move
             if status is PollStatus.BOT_DEAD:
                 return None
@@ -105,7 +110,7 @@ class Player:
             self.own_hold_spawn = None
             if sp.garbage_arrived or (self.expected is not None and board_cells(sp.locked) != board_cells(self.expected)):
                 # A reset with a request in flight can hand back a stale move; relaunching is race-free.
-                log.info("board differs from prediction (garbage or misplaced piece): relaunching bot")
+                (log.debug if self.trainer else log.info)("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
         # Cold Clear's `incoming` is the garbage expected after placing this piece. Red and yellow
@@ -133,15 +138,21 @@ class Player:
 
         if move.hold:
             self.own_hold_spawn = (kind, board_cells(sp.locked))
-        self.output.run(actions)
+        self.target = (kind, list(final.cells()), move.hold)
+        if not self.trainer:
+            self.output.run(actions)
         board = Board(list(sp.locked.rows))
         board.place(final.cells())
         self.expected = board
         self.tracker.expected_locked = board_cells(board)
         self.pieces += 1
-        log.info("#%d %s hold=%s -> %s  (%.0f ms, depth %d%s)", self.pieces, sp.piece, move.hold,
-                 " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth,
-                 f", incoming {sp.incoming}" if sp.incoming else "")
+        if self.trainer:
+            log.info("#%d place %s%s at %s  (depth %d)", self.pieces, kind,
+                     " (press HOLD first)" if move.hold else "", sorted(final.cells()), move.depth)
+        else:
+            log.info("#%d %s hold=%s -> %s  (%.0f ms, depth %d%s)", self.pieces, sp.piece, move.hold,
+                     " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth,
+                     f", incoming {sp.incoming}" if sp.incoming else "")
         return actions
 
     def step(self, fs: FrameState) -> list[Action] | None:
@@ -209,11 +220,41 @@ class LiveView:
                     cv2.circle(vis, (S(px), S(py)), 2, self.COLORS[cell], -1)
         b = L.board
         cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
+
+        def cell_box(x, y, inset):
+            px, py = L.cell_center(19 - y, x)
+            return (S(px) - cw // 2 + inset, S(py) - ch // 2 + inset), (S(px) + cw // 2 - inset, S(py) + ch // 2 - inset)
+
+        # trainer: future placements faint, current target bold
+        for i, step in enumerate(self.player.plan[1:3], start=1):
+            col = self.COLORS.get(step.piece, (200, 200, 200))
+            for (x, y) in step.cells:
+                if y < 20:
+                    p0, p1 = cell_box(x, y, 6 + 3 * i)
+                    cv2.rectangle(vis, p0, p1, tuple(int(c * 0.5) for c in col), 1)
+            if step.cells:
+                x, y = max(step.cells, key=lambda c: (c[1], -c[0]))
+                p0, _ = cell_box(x, y, 0)
+                cv2.putText(vis, str(i + 1), (p0[0] + 4, p0[1] + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        if self.player.target:
+            kind, cells, hold_first = self.player.target
+            col = self.COLORS.get(kind, (255, 255, 255))
+            for (x, y) in cells:
+                if y < 20:
+                    p0, p1 = cell_box(x, y, 3)
+                    cv2.rectangle(vis, p0, p1, (255, 255, 255), 4)
+                    cv2.rectangle(vis, p0, p1, col, 2)
+            if hold_first:
+                hb = L.hold
+                cv2.rectangle(vis, (S(hb.x) - 4, S(hb.y) - 4), (S(hb.x + hb.w) + 4, S(hb.y + hb.h) + 4), (0, 255, 255), 3)
+                cv2.putText(vis, "HOLD", (S(hb.x), S(hb.y + hb.h) + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         hud = [
             f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
             f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
             self.last_line,
-            "white boxes = locked stack   green dots = active piece   |   s save frame   q quit",
+            ("bold outline = place the piece here   faint 2/3 = next planned pieces   |   s save   q quit"
+             if self.player.trainer else
+             "white boxes = locked stack   green dots = active piece   |   s save frame   q quit"),
         ]
         for i, t in enumerate(hud):
             cv2.putText(vis, t, (14, 26 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
@@ -240,6 +281,7 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--max-nodes", type=int, default=100_000)
     ap.add_argument("--show", action="store_true", help="show the capture feed with the tracker's view drawn over it")
+    ap.add_argument("--trainer", action="store_true", help="you play; the bot's intended placements are drawn on the feed (implies --show)")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
     ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
@@ -259,8 +301,12 @@ def main() -> None:
     else:
         output = DryRunOutput()
 
+    if args.trainer:
+        args.show = True
+        output = DryRunOutput()
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
-                    think_ms=args.think if args.source == "synthetic" else 0)
+                    think_ms=args.think if args.source == "synthetic" else (150 if args.trainer else 0),
+                    trainer=args.trainer)
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 
     class _Hook(logging.Handler):  # mirror the last decision line into the overlay

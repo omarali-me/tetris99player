@@ -37,3 +37,18 @@ def test_weights_override_and_validation():
     assert load_weights("config/weights.json")["tspin2"] == 410
     with coldclear.ColdClear("IOTLJSZ", threads=1, max_nodes=2000, weights={"clear4": 0}) as bot:
         assert bot.weights.clear4 == 0
+
+
+def test_plan_matches_move():
+    import time
+    with coldclear.ColdClear("IOTLJSZ", threads=1, max_nodes=5000) as bot:
+        time.sleep(0.2)  # let it search a few pieces deep so the plan has several steps
+        bot.request_move(0)
+        for _ in range(200):
+            status, move = bot.poll_move(plan_len=4)
+            if status is coldclear.PollStatus.MOVE_PROVIDED:
+                break
+            time.sleep(0.005)
+    assert move is not None and bot.plan
+    assert sorted(bot.plan[0].cells) == sorted(move.cells)
+    assert len(bot.plan) >= 2

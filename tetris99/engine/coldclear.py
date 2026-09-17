@@ -167,6 +167,18 @@ class Move:
         )
 
 
+@dataclass
+class PlanStep:
+    piece: str
+    cells: list[tuple[int, int]]
+    cleared: list[int]   # rows this placement clears
+
+    @classmethod
+    def from_c(cls, p: CCPlanPlacement) -> "PlanStep":
+        return cls(PIECES[p.piece], [(p.expected_x[i], p.expected_y[i]) for i in range(4)],
+                   [int(p.cleared_lines[i]) for i in range(4) if p.cleared_lines[i] >= 0])
+
+
 def board_to_field(board: Board) -> C.Array:
     field = (C.c_bool * 400)()
     for y in range(40):
@@ -207,6 +219,7 @@ class ColdClear:
                 C.byref(hold_c) if hold_c is not None else None, False, 0, q, len(queue))
         if not self.bot:
             raise RuntimeError("cc_launch failed")
+        self.plan: list[PlanStep] = []
 
     def add_next_piece(self, piece: str) -> None:
         lib().cc_add_next_piece_async(self.bot, PIECES.index(piece))
@@ -217,9 +230,17 @@ class ColdClear:
     def request_move(self, incoming: int = 0) -> None:
         lib().cc_request_next_move(self.bot, incoming)
 
-    def poll_move(self) -> tuple[PollStatus, Move | None]:
+    def poll_move(self, plan_len: int = 0) -> tuple[PollStatus, Move | None]:
+        """Poll for the requested move. With plan_len > 0, also fetch the bot's intended follow-up
+        placements into self.plan (a list of PlanStep, first entry = this move)."""
         m = CCMove()
-        status = PollStatus(lib().cc_poll_next_move(self.bot, C.byref(m), None, None))
+        if plan_len:
+            plan = (CCPlanPlacement * plan_len)()
+            n = C.c_uint32(plan_len)
+            status = PollStatus(lib().cc_poll_next_move(self.bot, C.byref(m), plan, C.byref(n)))
+            self.plan = [PlanStep.from_c(plan[i]) for i in range(n.value)] if status is PollStatus.MOVE_PROVIDED else []
+        else:
+            status = PollStatus(lib().cc_poll_next_move(self.bot, C.byref(m), None, None))
         return status, (Move.from_c(m) if status is PollStatus.MOVE_PROVIDED else None)
 
     def block_move(self) -> Move | None:
