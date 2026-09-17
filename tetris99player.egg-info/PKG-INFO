@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: tetris99player
+Version: 0.1.0
+Summary: Tetris 99 bot: capture card -> vision -> engine -> USB controller emulation
+Requires-Python: >=3.11
+Requires-Dist: opencv-python
+Requires-Dist: numpy
+Requires-Dist: pyserial
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"

@@ -1,0 +1,15 @@
+[project]
+name = "tetris99player"
+version = "0.1.0"
+description = "Tetris 99 bot: capture card -> vision -> engine -> USB controller emulation"
+requires-python = ">=3.11"
+dependencies = ["opencv-python", "numpy", "pyserial"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["tetris99*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
