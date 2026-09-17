@@ -175,7 +175,12 @@ class LiveView:
     COLORS = {"I": (201, 183, 0), "O": (0, 194, 242), "T": (191, 63, 160), "S": (75, 180, 60),
               "Z": (47, 51, 224), "J": (214, 75, 47), "L": (26, 140, 242), "G": (173, 161, 154)}
 
+    SCALE = 2 / 3  # draw on a 1280x720 copy: same window, a third of the pixels to touch
+
     def __init__(self, layout: Layout, player: "Player"):
+        import os
+        if os.path.isdir("/usr/share/fonts/truetype/dejavu"):
+            os.environ.setdefault("QT_QPA_FONTDIR", "/usr/share/fonts/truetype/dejavu")  # quiets cv2's Qt font warning
         import cv2
         self.cv2, self.layout, self.player = cv2, layout, player
         self.last_line = ""
@@ -183,26 +188,27 @@ class LiveView:
 
     def show(self, frame, fs: FrameState) -> bool:
         """Returns False when the user quits."""
-        cv2, L = self.cv2, self.layout
-        vis = frame.copy()
+        cv2, L, k = self.cv2, self.layout, self.SCALE
+        vis = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
         st = self.player.tracker.state
-        cw, ch = int(L.cell_w), int(L.cell_h)
+        S = lambda v: int(v * k)
+        cw, ch = S(L.cell_w), S(L.cell_h)
         for (x, y) in st.locked:
             if y < 20:
                 px, py = L.cell_center(19 - y, x)
-                cv2.rectangle(vis, (px - cw // 2 + 4, py - ch // 2 + 4), (px + cw // 2 - 4, py + ch // 2 - 4), (255, 255, 255), 1)
+                cv2.rectangle(vis, (S(px) - cw // 2 + 3, S(py) - ch // 2 + 3), (S(px) + cw // 2 - 3, S(py) + ch // 2 - 3), (255, 255, 255), 1)
         for (x, y) in st.active:
             if y < 20:
                 px, py = L.cell_center(19 - y, x)
-                cv2.circle(vis, (px, py), 6, (0, 255, 0), -1)
+                cv2.circle(vis, (S(px), S(py)), 5, (0, 255, 0), -1)
         for r in range(20):
             for c in range(10):
                 cell = fs.grid[r][c].value
                 if cell in self.COLORS:
                     px, py = L.cell_center(r, c)
-                    cv2.circle(vis, (px, py), 3, self.COLORS[cell], -1)
+                    cv2.circle(vis, (S(px), S(py)), 2, self.COLORS[cell], -1)
         b = L.board
-        cv2.rectangle(vis, (b.x, b.y), (b.x + b.w, b.y + b.h), (0, 255, 0), 1)
+        cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
         hud = [
             f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
             f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
@@ -210,9 +216,9 @@ class LiveView:
             "white boxes = locked stack   green dots = active piece   |   s save frame   q quit",
         ]
         for i, t in enumerate(hud):
-            cv2.putText(vis, t, (20, 40 + 32 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4)
-            cv2.putText(vis, t, (20, 40 + 32 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (60, 255, 60), 2)
-        cv2.imshow("tetris99 live", cv2.resize(vis, (1280, 720)))
+            cv2.putText(vis, t, (14, 26 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
+            cv2.putText(vis, t, (14, 26 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (60, 255, 60), 1)
+        cv2.imshow("tetris99 live", vis)
         k = cv2.waitKey(1) & 0xFF
         if k == ord("q"):
             return False
@@ -270,7 +276,7 @@ def main() -> None:
         for frame, fs in frames:
             n += 1
             player.step(fs)
-            if view and not view.show(frame, fs):
+            if view and n % 2 == 0 and not view.show(frame, fs):  # overlay at 30 fps, tracking at 60
                 break
             now = time.perf_counter()
             if args.source != "synthetic" and now - t_report >= 5.0:
