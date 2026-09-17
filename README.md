@@ -34,7 +34,9 @@ The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-ba
 ## Status
 - [x] project skeleton, board model, serial protocol, firmware sketch
 - [ ] verify capture card and calibrate layout on real frames
-- [ ] tune color thresholds, detect active piece vs locked stack
+- [x] active piece / locked stack tracker driven by queue shifts (tested on synthetic frames)
+- [ ] tune color thresholds on real frames
 - [x] Cold Clear integration and offline simulator
-- [ ] input executor: turn Cold Clear movements into controller presses, verified in simulator
+- [x] input executor: Cold Clear movements -> presses with DAS, replay-verified
+- [ ] main loop (capture -> tracker -> Cold Clear -> executor) with dry-run mode
 - [ ] closed loop vs CPU battle mode
