@@ -22,13 +22,18 @@ class SimEnv:
         self.garbage_every = garbage_every
         self.piece: FallingPiece | None = None
         self.dead = False
+        self.on_action = None   # optional callback(env, action) after each interpreted action
+        self.last_actions: list[Action] = []
 
     # ---- output side (what the controller would do) ----
     def run(self, actions: list[Action]) -> None:
         g = self.game
         assert self.piece is not None, "no active piece"
+        self.last_actions = actions
         for a in actions:
             k = a.kind
+            if self.on_action:
+                self.on_action(self, a)
             if k == "hold":
                 cur = self.piece.kind
                 if g.hold is None:
@@ -58,6 +63,8 @@ class SimEnv:
                 g.take_unreported()
             else:
                 raise ValueError(k)
+        if self.on_action:
+            self.on_action(self, None)
 
     # ---- capture side ----
     def frames(self) -> Iterator[FrameState]:

@@ -152,7 +152,7 @@ class Player:
 def frame_states(source: str, layout: Layout) -> tuple[Iterable[FrameState], object]:
     if source == "synthetic":
         from .sim_env import SimEnv
-        env = SimEnv(seed=0, max_pieces=200, garbage_every=15)
+        env = SimEnv(seed=0, max_pieces=200, garbage_every=5)
         return env.frames(), env
     if Path(source).is_file():
         from .capture import VideoFile

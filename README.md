@@ -34,6 +34,7 @@ The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-ba
 ## Running
 ```
 .venv/bin/python -m tetris99.loop --source synthetic            # offline, fake Switch, prints decisions
+.venv/bin/python tools/watch.py                                 # same, but animated in a window
 .venv/bin/python -m tetris99.loop --source recordings/game.mp4  # dry run on a recording (logs actions)
 .venv/bin/python -m tetris99.loop --source 4 --output serial    # live: capture device 4 -> Arduino
 ```
