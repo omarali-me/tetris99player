@@ -12,7 +12,7 @@ except FileNotFoundError:
 
 def test_player_survives_with_garbage():
     env = SimEnv(seed=5, max_pieces=80, garbage_every=16)
-    player = Player(env, threads=1, max_nodes=5000)
+    player = Player(env, threads=1, max_nodes=5000, think_ms=15)  # a little think time keeps the search depth, and the outcome, stable
     for fs in env.frames():
         player.step(fs)
     player.close()
