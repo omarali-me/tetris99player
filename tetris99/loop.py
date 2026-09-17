@@ -108,9 +108,10 @@ class Player:
                 log.info("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
-        # Cold Clear's `incoming` is the garbage expected after placing this piece. Red segments are
-        # certain; yellow ones may still be cancelled by our own attack, so count them with a discount.
-        incoming = sp.imminent + (sp.incoming - sp.imminent) // 2 if self.count_pending_garbage else sp.imminent
+        # Cold Clear's `incoming` is the garbage expected after placing this piece. Red and yellow
+        # segments are close; grey ones are freshly queued and may still be cancelled by our own
+        # attack, so they count half.
+        incoming = sp.incoming if self.count_pending_garbage else sp.imminent
         move = self._get_move(incoming)
         if move is None:
             log.error("no move (bot dead?) — relaunching from current board")

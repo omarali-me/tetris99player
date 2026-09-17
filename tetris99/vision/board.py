@@ -1,12 +1,17 @@
-"""Extract board, hold and queue from a 1080p frame."""
+"""Extract board, hold and queue from a 1080p frame.
+
+Everything is vectorised: one HSV conversion per region, numpy for the rest. A full read_frame
+is ~2 ms, which matters because the loop must keep up with 60 fps capture."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import cv2
 import numpy as np
 
-from ..config import BOARD_COLS, BOARD_ROWS, Layout
-from .cells import Cell, classify_patch
+from ..config import BOARD_COLS, BOARD_ROWS, Layout, Rect
+from .cells import (Cell, HUE_RANGES, SAT_MIN, VAL_MAX_EMPTY, VAL_MIN_BLOCK, VAL_MIN_GARBAGE,
+                    Z_WRAP_MIN)
 from .garbage import GarbageMeter, read_garbage_meter
 
 PATCH = 3  # half-size of the sampled square around each cell center
@@ -23,30 +28,91 @@ class FrameState:
         return "\n".join("".join(c.value for c in row) for row in self.grid)
 
 
+# ---------------------------------------------------------------- hue lookup table
+def _hue_table() -> np.ndarray:
+    """hue (0..179) -> piece index into PIECE_ORDER, or -1 when the hue is in a gap."""
+    table = np.full(180, -1, np.int8)
+    for i, cell in enumerate(PIECE_ORDER):
+        lo, hi = HUE_RANGES[cell]
+        table[lo : hi + 1] = i
+    table[Z_WRAP_MIN:] = PIECE_ORDER.index(Cell.Z)
+    return table
+
+
+PIECE_ORDER = [Cell.I, Cell.O, Cell.T, Cell.S, Cell.Z, Cell.J, Cell.L]
+HUE_TABLE = _hue_table()
+
+
+CODE_CELLS = [Cell.EMPTY, Cell.GARBAGE, Cell.GHOST, *PIECE_ORDER]  # index = classification code
+
+
+def classify_hsv(h: np.ndarray, s: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Vectorised version of cells.classify_patch on arrays of per-cell median H, S, V.
+    Returns integer codes indexing CODE_CELLS."""
+    out = np.zeros(h.shape, np.int8)
+    grey = (v >= VAL_MAX_EMPTY) & (s < SAT_MIN)
+    out[grey & (v >= VAL_MIN_GARBAGE)] = 1
+    coloured = (v >= VAL_MAX_EMPTY) & (s >= SAT_MIN)
+    idx = HUE_TABLE[h]
+    known = coloured & (idx >= 0)
+    out[known & (v >= VAL_MIN_BLOCK)] = (idx[known & (v >= VAL_MIN_BLOCK)] + 3).astype(np.int8)
+    out[known & (v < VAL_MIN_BLOCK)] = 2
+    return out
+
+
+# ---------------------------------------------------------------- board grid
+class _GridSampler:
+    """Precomputed pixel indices for the 200 cell patches of a layout."""
+
+    def __init__(self, layout: Layout):
+        self.layout = layout
+        ys, xs = [], []
+        for r in range(BOARD_ROWS):
+            for c in range(BOARD_COLS):
+                x, y = layout.cell_center(r, c)
+                yy, xx = np.mgrid[y - PATCH : y + PATCH + 1, x - PATCH : x + PATCH + 1]
+                ys.append(yy.ravel()); xs.append(xx.ravel())
+        self.ys = np.array(ys); self.xs = np.array(xs)      # (200, 49)
+
+    def medians(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        pix = frame[self.ys, self.xs]                        # (200, 49, 3) BGR
+        hsv = cv2.cvtColor(pix.reshape(-1, 1, 3), cv2.COLOR_BGR2HSV).reshape(pix.shape)
+        med = np.median(hsv, axis=1).astype(np.int32)        # (200, 3)
+        return med[:, 0], med[:, 1], med[:, 2]
+
+
+_samplers: dict[int, _GridSampler] = {}
+
+
+def _sampler(layout: Layout) -> _GridSampler:
+    key = id(layout)
+    if key not in _samplers:
+        _samplers[key] = _GridSampler(layout)
+    return _samplers[key]
+
+
 def read_grid(frame: np.ndarray, layout: Layout) -> list[list[Cell]]:
-    grid = []
-    for r in range(BOARD_ROWS):
-        row = []
-        for c in range(BOARD_COLS):
-            x, y = layout.cell_center(r, c)
-            row.append(classify_patch(frame[y - PATCH : y + PATCH + 1, x - PATCH : x + PATCH + 1]))
-        grid.append(row)
-    return grid
+    h, s, v = _sampler(layout).medians(frame)
+    codes = classify_hsv(h, s, v).reshape(BOARD_ROWS, BOARD_COLS)
+    return [[CODE_CELLS[c] for c in row] for row in codes]
 
 
-def read_piece_box(frame: np.ndarray, box) -> Cell | None:
-    """Identify the tetromino drawn in a hold/queue box by its dominant colored pixels."""
+# ---------------------------------------------------------------- hold / queue boxes
+MIN_PIECE_PIXELS = 150  # a drawn preview piece is a few thousand vivid pixels; below this, empty
+
+
+def read_piece_box(frame: np.ndarray, box: Rect) -> Cell | None:
+    """Identify the tetromino drawn in a hold/queue box by the dominant vivid hue."""
     roi = frame[box.y : box.y + box.h, box.x : box.x + box.w]
-    counts: dict[Cell, int] = {}
-    step = 4
-    for y in range(0, roi.shape[0] - PATCH * 2, step):
-        for x in range(0, roi.shape[1] - PATCH * 2, step):
-            cell = classify_patch(roi[y : y + PATCH * 2 + 1, x : x + PATCH * 2 + 1])
-            if cell not in (Cell.EMPTY, Cell.GARBAGE, Cell.GHOST):
-                counts[cell] = counts.get(cell, 0) + 1
-    if not counts:
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    vivid = (hsv[..., 1] >= SAT_MIN) & (hsv[..., 2] >= VAL_MIN_BLOCK)
+    if int(vivid.sum()) < MIN_PIECE_PIXELS:
         return None
-    return max(counts, key=counts.get)
+    idx = HUE_TABLE[hsv[..., 0][vivid]]
+    counts = np.bincount(idx[idx >= 0], minlength=len(PIECE_ORDER))
+    if counts.sum() < MIN_PIECE_PIXELS:
+        return None
+    return PIECE_ORDER[int(counts.argmax())]
 
 
 def read_frame(frame: np.ndarray, layout: Layout) -> FrameState:

@@ -185,7 +185,7 @@ class Tracker:
             st.locked, st.active, st.current = locked, active, spawned
             st.spawns += 1
             return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces,
-                         fs.garbage.total, fs.garbage.imminent)
+                         fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
 
         # between spawns: attribute non-locked cells to the active piece
         visible = set(cells)
