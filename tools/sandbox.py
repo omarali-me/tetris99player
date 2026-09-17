@@ -29,7 +29,7 @@ from tetris99.sandbox.lessons import BY_KEY, LESSONS
 CELL = 32
 BOARD_X, BOARD_Y = 230, 40
 PANEL_X = BOARD_X + 10 * CELL + 40
-W, H = PANEL_X + 470, BOARD_Y + 20 * CELL + 40
+W, H = PANEL_X + 600, BOARD_Y + 20 * CELL + 40
 BG = (22, 23, 28); GRID = (42, 44, 52); INK = (232, 234, 240); INK2 = (150, 156, 170); WARN = (255, 170, 80)
 COLORS = {"I": (0, 205, 215), "O": (240, 210, 0), "T": (170, 50, 200), "S": (60, 200, 60),
           "Z": (230, 50, 50), "J": (30, 90, 220), "L": (250, 140, 20), "G": (120, 120, 120)}
