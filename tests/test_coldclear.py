@@ -60,7 +60,7 @@ def test_impossible_sequences_are_rejected():
     assert valid_sequence("IOTLJSZ") is True
     assert valid_sequence("IOTLJSZI") is True           # second bag starts
     assert valid_sequence("IIOTLJS", hold="I") is True   # hold is outside the window rule
-    assert valid_sequence("IIOTLJSI") is False           # three I within 7 in the sequence itself
+    assert valid_sequence("IIOTLJI") is False            # three I within 7 in the sequence itself
     assert valid_sequence("IOTLJS", hold="Z") is True
     assert valid_sequence("IOTXJS") is False            # not a piece
     with pytest.raises(ValueError):
