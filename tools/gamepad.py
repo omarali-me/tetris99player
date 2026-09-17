@@ -198,7 +198,7 @@ def main() -> None:
     codes = code_map()
 
     def stick_from_mouse(stick, pos):
-        w = by_name[stick]
+        w = by_name["LSTICK" if stick == "LS" else "RSTICK"]
         cx, cy = w.rect.center; r = w.rect.w / 2
         dx, dy = (pos[0] - cx) / r, (pos[1] - cy) / r
         mag = math.hypot(dx, dy)
