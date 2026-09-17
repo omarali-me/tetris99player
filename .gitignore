@@ -4,3 +4,4 @@ __pycache__/
 recordings/
 config/layout.json
 .pytest_cache/
+third_party/

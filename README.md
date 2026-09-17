@@ -23,9 +23,18 @@ python3 -m venv .venv && .venv/bin/pip install -e .[dev]
 ```
 Press `s` in the preview to save a frame, then `python tools/calibrate.py recordings/frame_*.png`.
 
+## Cold Clear (decision engine)
+```
+git clone --depth 1 https://github.com/MinusKelvin/cold-clear third_party/cold-clear
+(cd third_party/cold-clear && cargo build --release -p c-api)
+.venv/bin/python -m tetris99.engine.simulator   # bot plays 200 pieces offline
+```
+The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-bag game against the board model.
+
 ## Status
 - [x] project skeleton, board model, serial protocol, firmware sketch
 - [ ] verify capture card and calibrate layout on real frames
 - [ ] tune color thresholds, detect active piece vs locked stack
-- [ ] Cold Clear integration
+- [x] Cold Clear integration and offline simulator
+- [ ] input executor: turn Cold Clear movements into controller presses, verified in simulator
 - [ ] closed loop vs CPU battle mode
