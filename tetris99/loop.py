@@ -265,12 +265,17 @@ def main() -> None:
 
     t0 = time.perf_counter()
     n = 0
+    t_report, n_report = t0, 0
     try:
         for frame, fs in frames:
             n += 1
             player.step(fs)
             if view and not view.show(frame, fs):
                 break
+            now = time.perf_counter()
+            if args.source != "synthetic" and now - t_report >= 5.0:
+                log.info("fps %.1f", (n - n_report) / (now - t_report))
+                t_report, n_report = now, n
     except KeyboardInterrupt:
         pass
     finally:

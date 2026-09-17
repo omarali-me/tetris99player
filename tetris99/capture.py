@@ -26,6 +26,10 @@ class CaptureCard:
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # always read the freshest frame
+        # Take the raw JPEG bytes and decode them ourselves. With a 1-frame buffer, letting the
+        # driver decode inside read() stalls it and halves the rate to 30 fps; this way it is 60.
+        self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+        self.raw = bool(self.cap.get(cv2.CAP_PROP_CONVERT_RGB) == 0)
 
     def describe(self) -> str:
         w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -38,6 +42,10 @@ class CaptureCard:
             ok, frame = self.cap.read()
             if not ok:
                 raise RuntimeError("capture read failed")
+            if self.raw:
+                frame = cv2.imdecode(frame.reshape(-1), cv2.IMREAD_COLOR)
+                if frame is None:
+                    continue  # a torn JPEG; skip it
             yield frame
 
     def close(self) -> None:
