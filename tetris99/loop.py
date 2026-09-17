@@ -84,6 +84,8 @@ class Player:
         self.laid: list[tuple[str, list[tuple[int, int]]]] = []  # coach layout: (piece, cells) per step
         self.laid_clears: list[tuple[int, int]] = []               # (row, step) rows that clear during the layout
         self.laid_at_spawn = 0
+        self.laid_done = 0                                          # steps already placed (hidden from the overlay)
+        self._last_locked: set = set()
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
         self.threads, self.max_nodes = threads, max_nodes
@@ -237,15 +239,25 @@ class Player:
         laid, self.laid_clears = map_plan(steps)
         self.laid = laid
         self.laid_at_spawn = st.spawns
+        self.laid_done = 0
+        self._last_locked = set(st.locked)
         log.info("coach [%s]: %s", self.mode, " ".join(f"{i + 1}:{p}" for i, (p, _) in enumerate(laid)) or "no plan")
         return laid
 
     def coach_step(self, fs: FrameState) -> None:
-        """Trainer mode per frame: keep tracking; clear the layout once that many pieces have spawned."""
-        self.tracker.update(fs)
-        if self.laid and self.tracker.state.spawns - self.laid_at_spawn >= len(self.laid):
-            log.info("layout complete; press space for the next one")
-            self.laid, self.laid_clears = [], []
+        """Trainer mode per frame: keep tracking. Each time the locked stack changes a piece was
+        placed, so the next step of the layout is hidden (hold presses change nothing and are not
+        counted). The layout is cleared once every step is placed."""
+        sp = self.tracker.update(fs)
+        if sp is None or not self.laid:
+            return
+        locked = board_cells(sp.locked)
+        if locked != self._last_locked:
+            self._last_locked = locked
+            self.laid_done += 1
+            if self.laid_done >= len(self.laid):
+                log.info("layout complete; press space for the next one")
+                self.laid, self.laid_clears, self.laid_done = [], [], 0
 
     def step(self, fs: FrameState) -> list[Action] | None:
         if self.trainer:
@@ -291,6 +303,8 @@ class LiveView:
         self.cv2, self.layout, self.player = cv2, layout, player
         self.last_line = ""
         Path("recordings").mkdir(exist_ok=True)
+        cv2.namedWindow("tetris99 live", cv2.WINDOW_NORMAL)  # resizable; maximise it for a bigger view
+        cv2.resizeWindow("tetris99 live", 1280, 720)
 
     def render(self, frame, fs: FrameState):
         """Draw the overlay onto a 1280x720 copy of the frame and return it."""
@@ -324,15 +338,17 @@ class LiveView:
             cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
 
         # coach layout: translucent fills, one outline per tetromino, a big number on each
-        if self.player.laid:
+        todo = list(enumerate(self.player.laid, start=1))[self.player.laid_done:]  # placed steps are hidden
+        if todo:
             fill = vis.copy()
-            for piece, cells in self.player.laid:
+            for _, (piece, cells) in todo:
                 col = self.COLORS.get(piece, (200, 200, 200))
+                light = tuple(min(255, int(c * 0.6 + 100)) for c in col)  # pastel: keeps the board readable
                 for (x, y) in cells:
                     if y < 20:
                         p0, p1 = cell_box(x, y, 1)
-                        cv2.rectangle(fill, p0, p1, col, -1)
-            cv2.addWeighted(fill, 0.55, vis, 0.45, 0, vis)
+                        cv2.rectangle(fill, p0, p1, light, -1)
+            cv2.addWeighted(fill, 0.5, vis, 0.5, 0, vis)
             b = L.board
             for row, step in self.player.laid_clears:
                 if row < 20:
@@ -341,7 +357,7 @@ class LiveView:
                         cv2.line(vis, (x0, y), (min(x0 + 6, S(b.x + b.w)), y), (255, 255, 255), 2)
                     cv2.putText(vis, f"clears @{step}", (S(b.x + b.w) + 6, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3)
                     cv2.putText(vis, f"clears @{step}", (S(b.x + b.w) + 6, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            for i, (piece, cells) in enumerate(self.player.laid, start=1):
+            for i, (piece, cells) in todo:
                 col = self.COLORS.get(piece, (200, 200, 200))
                 cs = set(cells)
                 for (x, y) in cells:
@@ -379,7 +395,7 @@ class LiveView:
         if coach:
             hud = [
                 f"COACH [{self.player.mode}]   piece={st.current or '?'} hold={st.hold or '-'} next={''.join(st.queue) or '?'}"
-                + (f"   layout: {len(self.player.laid)} pieces" if self.player.laid else "   press SPACE to lay out"),
+                + (f"   layout: {self.player.laid_done}/{len(self.player.laid)} placed" if self.player.laid else "   press SPACE to lay out"),
                 self.last_line,
                 "space: lay out   t: T-spins   a: all clears   n: normal   s: save frame   q: quit",
             ]
