@@ -7,7 +7,7 @@
 
 #include <SwitchControlLibrary.h>
 
-enum Op : uint8_t { OP_SET = 1, OP_PRESS = 2, OP_HAT = 3, OP_RELEASE = 4, OP_WAIT = 5, OP_PING = 6 };
+enum Op : uint8_t { OP_SET = 1, OP_PRESS = 2, OP_HAT = 3, OP_RELEASE = 4, OP_WAIT = 5, OP_PING = 6, OP_LSTICK = 7, OP_RSTICK = 8 };
 
 const uint16_t PRESS_MS = 34;
 const uint8_t QUEUE_LEN = 64;
@@ -28,13 +28,17 @@ void applyButtons(uint16_t mask) {
 }
 
 void applyHat(uint8_t hat) {
-  SwitchControlLibrary().pressHatButton(hat);
+  // hat is the report value 0..7 for the eight directions, 8 = centred
+  SwitchControlLibrary().moveHat(hat);
   SwitchControlLibrary().sendReport();
 }
 
 void releaseAll() {
   applyButtons(0);
   applyHat(8);
+  SwitchControlLibrary().moveLeftStick(128, 128);
+  SwitchControlLibrary().moveRightStick(128, 128);
+  SwitchControlLibrary().sendReport();
   pressMask = 0;
 }
 
@@ -75,6 +79,8 @@ void loop() {
       case OP_HAT:     applyHat((uint8_t)c.arg); break;
       case OP_RELEASE: releaseAll(); break;
       case OP_WAIT:    busyUntil = now + c.arg; break;
+      case OP_LSTICK:  SwitchControlLibrary().moveLeftStick(c.arg & 0xff, c.arg >> 8); SwitchControlLibrary().sendReport(); break;
+      case OP_RSTICK:  SwitchControlLibrary().moveRightStick(c.arg & 0xff, c.arg >> 8); SwitchControlLibrary().sendReport(); break;
     }
   }
 }

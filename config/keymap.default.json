@@ -1,0 +1,10 @@
+{
+  "_about": "Keyboard shortcuts for tools/gamepad.py. Edit here or use the Rebind button in the tool; the tool saves to config/keymap.json which overrides this file.",
+  "A": "return", "B": "backspace", "X": "x", "Y": "y",
+  "L": "q", "R": "e", "ZL": "1", "ZR": "3",
+  "MINUS": "-", "PLUS": "=", "HOME": "h", "CAPTURE": "c",
+  "LSTICK": "f", "RSTICK": "g",
+  "DPAD_UP": "up", "DPAD_DOWN": "down", "DPAD_LEFT": "left", "DPAD_RIGHT": "right",
+  "LS_UP": "w", "LS_DOWN": "s", "LS_LEFT": "a", "LS_RIGHT": "d",
+  "RS_UP": "i", "RS_DOWN": "k", "RS_LEFT": "j", "RS_RIGHT": "l"
+}

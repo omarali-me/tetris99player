@@ -15,6 +15,8 @@ Opcodes:
     0x04 RELEASE arg ignored; releases everything
     0x05 WAIT    arg = milliseconds; delays subsequent queued commands
     0x06 PING    arg ignored; Arduino answers with a single byte 0x06
+    0x07 LSTICK  arg = x | (y << 8), each 0..255 with 128 = centre
+    0x08 RSTICK  arg = x | (y << 8)
 """
 from __future__ import annotations
 
@@ -59,7 +61,14 @@ class Op(IntEnum):
     RELEASE = 0x04
     WAIT = 0x05
     PING = 0x06
+    LSTICK = 0x07
+    RSTICK = 0x08
 
 
 def encode(op: Op, arg: int = 0) -> bytes:
     return struct.pack("<BH", int(op), arg & 0xFFFF)
+
+
+def stick_arg(x: int, y: int) -> int:
+    """Pack stick axes (0..255, 128 centre) into one 16-bit argument."""
+    return (max(0, min(255, x))) | (max(0, min(255, y)) << 8)
