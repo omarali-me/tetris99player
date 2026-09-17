@@ -28,6 +28,23 @@ def rows_to_original(y: int, cleared_orig: list[int]) -> int:
             y += 1
     return y
 
+
+def map_plan(steps: list[PlanStep]) -> tuple[list[tuple[str, list[tuple[int, int]]]], list[tuple[int, int]]]:
+    """Cold Clear gives each step in the coordinates of the board as it is when that piece is
+    placed, i.e. after earlier clears. Map everything onto the board as it is NOW.
+    Returns ([(piece, cells)], [(row, step number that clears it)])."""
+    cleared_orig: list[int] = []
+    laid: list[tuple[str, list[tuple[int, int]]]] = []
+    clears: list[tuple[int, int]] = []
+    for i, step in enumerate(steps, start=1):
+        cells = [(x, rows_to_original(y, cleared_orig)) for x, y in step.cells]
+        laid.append((step.piece, cells))
+        # all of this step's cleared rows share the same (pre-clear) coordinates
+        new = [rows_to_original(r, cleared_orig) for r in step.cleared]
+        clears += [(r, i) for r in new]
+        cleared_orig = sorted(cleared_orig + new)
+    return laid, clears
+
 log = logging.getLogger("loop")
 
 
@@ -65,6 +82,7 @@ class Player:
         self.plan: list[PlanStep] = []
         self.mode = "normal"
         self.laid: list[tuple[str, list[tuple[int, int]]]] = []  # coach layout: (piece, cells) per step
+        self.laid_clears: list[tuple[int, int]] = []               # (row, step) rows that clear during the layout
         self.laid_at_spawn = 0
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
@@ -216,15 +234,7 @@ class Player:
                     break
                 time.sleep(0.002)
             steps = list(bot.plan) if move else []
-        # Later steps are given in the rows of the board after earlier clears; map back to now.
-        cleared_orig: list[int] = []
-        laid: list[tuple[str, list[tuple[int, int]]]] = []
-        for step in steps:
-            cells = [(x, rows_to_original(y, cleared_orig)) for x, y in step.cells]
-            laid.append((step.piece, cells))
-            for r in step.cleared:
-                cleared_orig.append(rows_to_original(r, cleared_orig))
-            cleared_orig.sort()
+        laid, self.laid_clears = map_plan(steps)
         self.laid = laid
         self.laid_at_spawn = st.spawns
         log.info("coach [%s]: %s", self.mode, " ".join(f"{i + 1}:{p}" for i, (p, _) in enumerate(laid)) or "no plan")
@@ -235,7 +245,7 @@ class Player:
         self.tracker.update(fs)
         if self.laid and self.tracker.state.spawns - self.laid_at_spawn >= len(self.laid):
             log.info("layout complete; press space for the next one")
-            self.laid = []
+            self.laid, self.laid_clears = [], []
 
     def step(self, fs: FrameState) -> list[Action] | None:
         if self.trainer:
@@ -282,48 +292,78 @@ class LiveView:
         self.last_line = ""
         Path("recordings").mkdir(exist_ok=True)
 
-    def show(self, frame, fs: FrameState) -> bool:
-        """Returns False when the user quits."""
+    def render(self, frame, fs: FrameState):
+        """Draw the overlay onto a 1280x720 copy of the frame and return it."""
         cv2, L, k = self.cv2, self.layout, self.SCALE
         vis = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
         st = self.player.tracker.state
         S = lambda v: int(v * k)
         cw, ch = S(L.cell_w), S(L.cell_h)
-        for (x, y) in st.locked:
-            if y < 20:
-                px, py = L.cell_center(19 - y, x)
-                cv2.rectangle(vis, (S(px) - cw // 2 + 3, S(py) - ch // 2 + 3), (S(px) + cw // 2 - 3, S(py) + ch // 2 - 3), (255, 255, 255), 1)
-        for (x, y) in st.active:
-            if y < 20:
-                px, py = L.cell_center(19 - y, x)
-                cv2.circle(vis, (S(px), S(py)), 5, (0, 255, 0), -1)
-        for r in range(20):
-            for c in range(10):
-                cell = fs.grid[r][c].value
-                if cell in self.COLORS:
-                    px, py = L.cell_center(r, c)
-                    cv2.circle(vis, (S(px), S(py)), 2, self.COLORS[cell], -1)
-        b = L.board
-        cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
+        coach = self.player.trainer
 
         def cell_box(x, y, inset):
             px, py = L.cell_center(19 - y, x)
             return (S(px) - cw // 2 + inset, S(py) - ch // 2 + inset), (S(px) + cw // 2 - inset, S(py) + ch // 2 - inset)
 
-        # coach: every planned placement at once, numbered in order, coloured by piece
-        for i, (piece, cells) in enumerate(self.player.laid, start=1):
-            col = self.COLORS.get(piece, (200, 200, 200))
-            for (x, y) in cells:
+        if not coach:
+            for (x, y) in st.locked:
                 if y < 20:
                     p0, p1 = cell_box(x, y, 3)
-                    cv2.rectangle(vis, p0, p1, (0, 0, 0), 4)
-                    cv2.rectangle(vis, p0, p1, col, 2)
-            if cells:
-                x, y = min(cells, key=lambda c: (-c[1], c[0]))  # top-left cell carries the number
-                p0, _ = cell_box(x, y, 0)
-                cv2.putText(vis, str(i), (p0[0] + 5, p0[1] + 17), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
-                cv2.putText(vis, str(i), (p0[0] + 5, p0[1] + 17), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col, 2)
-        if self.player.target and not self.player.trainer:
+                    cv2.rectangle(vis, p0, p1, (255, 255, 255), 1)
+            for (x, y) in st.active:
+                if y < 20:
+                    px, py = L.cell_center(19 - y, x)
+                    cv2.circle(vis, (S(px), S(py)), 5, (0, 255, 0), -1)
+            for r in range(20):
+                for c in range(10):
+                    cell = fs.grid[r][c].value
+                    if cell in self.COLORS:
+                        px, py = L.cell_center(r, c)
+                        cv2.circle(vis, (S(px), S(py)), 2, self.COLORS[cell], -1)
+            b = L.board
+            cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
+
+        # coach layout: translucent fills, one outline per tetromino, a big number on each
+        if self.player.laid:
+            fill = vis.copy()
+            for piece, cells in self.player.laid:
+                col = self.COLORS.get(piece, (200, 200, 200))
+                for (x, y) in cells:
+                    if y < 20:
+                        p0, p1 = cell_box(x, y, 1)
+                        cv2.rectangle(fill, p0, p1, col, -1)
+            cv2.addWeighted(fill, 0.55, vis, 0.45, 0, vis)
+            b = L.board
+            for row, step in self.player.laid_clears:
+                if row < 20:
+                    y = S(L.cell_center(19 - row, 0)[1])
+                    for x0 in range(S(b.x), S(b.x + b.w), 12):
+                        cv2.line(vis, (x0, y), (min(x0 + 6, S(b.x + b.w)), y), (255, 255, 255), 2)
+                    cv2.putText(vis, f"clears @{step}", (S(b.x + b.w) + 6, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3)
+                    cv2.putText(vis, f"clears @{step}", (S(b.x + b.w) + 6, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+            for i, (piece, cells) in enumerate(self.player.laid, start=1):
+                col = self.COLORS.get(piece, (200, 200, 200))
+                cs = set(cells)
+                for (x, y) in cells:
+                    if y >= 20:
+                        continue
+                    p0, p1 = cell_box(x, y, 1)
+                    # draw only the edges not shared with another cell of this piece
+                    if (x, y + 1) not in cs: cv2.line(vis, (p0[0], p0[1]), (p1[0], p0[1]), (255, 255, 255), 2)
+                    if (x, y - 1) not in cs: cv2.line(vis, (p0[0], p1[1]), (p1[0], p1[1]), (255, 255, 255), 2)
+                    if (x - 1, y) not in cs: cv2.line(vis, (p0[0], p0[1]), (p0[0], p1[1]), (255, 255, 255), 2)
+                    if (x + 1, y) not in cs: cv2.line(vis, (p1[0], p0[1]), (p1[0], p1[1]), (255, 255, 255), 2)
+                vis_cells = [c for c in cells if c[1] < 20]
+                if vis_cells:
+                    cx = sum(S(L.cell_center(19 - y, x)[0]) for x, y in vis_cells) / len(vis_cells)
+                    cy = sum(S(L.cell_center(19 - y, x)[1]) for x, y in vis_cells) / len(vis_cells)
+                    label = str(i)
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, 0.95, 2)
+                    org = (int(cx - tw / 2), int(cy + th / 2))
+                    cv2.putText(vis, label, org, cv2.FONT_HERSHEY_DUPLEX, 0.95, (0, 0, 0), 5)
+                    cv2.putText(vis, label, org, cv2.FONT_HERSHEY_DUPLEX, 0.95, (255, 255, 255), 2)
+
+        if self.player.target and not coach:
             kind, cells, hold_first = self.player.target
             col = self.COLORS.get(kind, (255, 255, 255))
             for (x, y) in cells:
@@ -335,18 +375,30 @@ class LiveView:
                 hb = L.hold
                 cv2.rectangle(vis, (S(hb.x) - 4, S(hb.y) - 4), (S(hb.x + hb.w) + 4, S(hb.y + hb.h) + 4), (0, 255, 255), 3)
                 cv2.putText(vis, "HOLD", (S(hb.x), S(hb.y + hb.h) + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-        hud = [
-            f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
-            f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
-            self.last_line,
-            (f"COACH [{self.player.mode}]   space: lay out all known pieces   t: T-spins   a: all clears   n: normal   |   s save   q quit"
-             if self.player.trainer else
-             "white boxes = locked stack   green dots = active piece   |   s save frame   q quit"),
-        ]
+
+        if coach:
+            hud = [
+                f"COACH [{self.player.mode}]   piece={st.current or '?'} hold={st.hold or '-'} next={''.join(st.queue) or '?'}"
+                + (f"   layout: {len(self.player.laid)} pieces" if self.player.laid else "   press SPACE to lay out"),
+                self.last_line,
+                "space: lay out   t: T-spins   a: all clears   n: normal   s: save frame   q: quit",
+            ]
+        else:
+            hud = [
+                f"current={st.current or '?'} hold={st.hold or '-'} queue={''.join(st.queue) or '?'} spawns={st.spawns} pieces={self.player.pieces}",
+                f"read: hold={fs.hold.value if fs.hold else '-'} queue={''.join(q.value if q else '?' for q in fs.queue)} garbage={fs.garbage.pending}+{fs.garbage.imminent}red",
+                self.last_line,
+                "white boxes = locked stack   green dots = active piece   |   s save frame   q quit",
+            ]
         for i, t in enumerate(hud):
             cv2.putText(vis, t, (14, 26 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
             cv2.putText(vis, t, (14, 26 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (60, 255, 60), 1)
-        cv2.imshow("tetris99 live", vis)
+        return vis
+
+    def show(self, frame, fs: FrameState) -> bool:
+        """Returns False when the user quits."""
+        cv2 = self.cv2
+        cv2.imshow("tetris99 live", self.render(frame, fs))
         k = cv2.waitKey(1) & 0xFF
         if k == ord("q"):
             return False

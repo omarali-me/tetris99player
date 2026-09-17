@@ -3,7 +3,8 @@ import pytest
 
 from tetris99.engine import coldclear
 from tetris99.engine.board import Board
-from tetris99.loop import Player, rows_to_original
+from tetris99.engine.coldclear import PlanStep
+from tetris99.loop import Player, map_plan, rows_to_original
 from tetris99.sim_env import SimEnv
 
 try:
@@ -18,6 +19,18 @@ def test_rows_to_original():
     assert rows_to_original(0, [0, 1]) == 2
     assert rows_to_original(3, [0, 5]) == 4       # only clears at or below count
     assert rows_to_original(5, [0, 5]) == 7       # row 6 -> then cleared 5 pushes to 7
+
+
+def test_map_plan_double_clear_then_more():
+    # step 1 clears rows 9 and 10 (same pre-clear coordinates); step 2 sits on row 9 of the new board
+    steps = [PlanStep("J", [(0, 10), (1, 10), (2, 9), (2, 10)], [9, 10]),
+             PlanStep("L", [(0, 9), (0, 10), (1, 10), (2, 10)], [10]),
+             PlanStep("J", [(0, 10), (0, 11), (1, 10), (2, 10)], [10])]
+    laid, clears = map_plan(steps)
+    assert laid[0][1] == [(0, 10), (1, 10), (2, 9), (2, 10)]
+    assert sorted(laid[1][1]) == [(0, 11), (0, 12), (1, 12), (2, 12)]   # shifted up past rows 9-10
+    assert sorted(laid[2][1]) == [(0, 13), (0, 14), (1, 13), (2, 13)]   # past rows 9, 10 and 12
+    assert clears == [(9, 1), (10, 1), (12, 2), (13, 3)]
 
 
 def apply_layout(board: Board, laid) -> None:
