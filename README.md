@@ -44,6 +44,7 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 .venv/bin/python tools/watch.py                                 # same, but animated in a window
 .venv/bin/python -m tetris99.loop --source recordings/game.mp4  # dry run on a recording (logs actions)
 .venv/bin/python -m tetris99.loop --source 4 --output serial    # live: capture device 4 -> Arduino
+.venv/bin/python tools/gamepad.py                               # keyboard -> Arduino, to navigate menus and start games
 ```
 
 ## Status
