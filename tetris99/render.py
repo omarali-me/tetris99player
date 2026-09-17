@@ -34,10 +34,25 @@ def _mini_piece(img, kind, cx, cy, size=18):
         _block(img, cx + dx * size, cy - dy * size, COLORS[kind], size)
 
 
+METER_W = 14
+PENDING = (0, 200, 240)   # yellow: announced
+IMMINENT = (40, 40, 230)  # red: committed, drops at next lock
+
+
 def draw(board: Board, piece: FallingPiece | None, hold: str | None, queue: list[str],
-         colors: dict[tuple[int, int], str] | None = None, info: list[str] = ()) -> np.ndarray:
+         colors: dict[tuple[int, int], str] | None = None, info: list[str] = (),
+         garbage_pending: int = 0, garbage_imminent: int = 0) -> np.ndarray:
     img = np.full((H, W, 3), BG, np.uint8)
     colors = colors or {}
+
+    # incoming-garbage meter, like Tetris 99: a bar to the left of the board, filling from the bottom
+    mx = BOARD_X - METER_W - 8
+    top, bottom = BOARD_Y, BOARD_Y + BOARD_ROWS * CELL
+    cv2.rectangle(img, (mx, top), (mx + METER_W, bottom), GRID, 1)
+    for i in range(min(BOARD_ROWS, garbage_pending + garbage_imminent)):
+        color = IMMINENT if i < garbage_imminent else PENDING
+        y0 = bottom - (i + 1) * CELL + 2
+        cv2.rectangle(img, (mx + 2, y0), (mx + METER_W - 2, y0 + CELL - 4), color, -1)
 
     def px(x, y):
         return BOARD_X + x * CELL, BOARD_Y + (BOARD_ROWS - 1 - y) * CELL

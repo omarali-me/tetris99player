@@ -38,13 +38,16 @@ def main() -> None:
     def info():
         g = env.game
         elapsed = time.perf_counter() - t_start
-        return [f"pieces  {g.pieces_placed}", f"lines   {g.lines}",
+        m = env.meter()
+        return [f"pieces  {g.pieces_placed}", f"lines   {g.lines}", f"garbage {m.total} incoming",
                 f"height  {g.board.height()}", f"pps     {g.pieces_placed / elapsed:.2f}",
                 f"speed   {state['delay']} ms", "", "last move:", state["last_actions"],
                 "", "space pause  n step", "+/- speed   q quit"]
 
     def show():
-        img = draw(env.game.board, env.piece, env.game.hold, env.game.queue[1:], colors, info())
+        m = env.meter()
+        img = draw(env.game.board, env.piece, env.game.hold, env.game.queue[1:], colors, info(),
+                   garbage_pending=m.pending, garbage_imminent=m.imminent)
         cv2.imshow("tetris99 bot", img)
 
     def handle_keys(wait_ms: int) -> None:
