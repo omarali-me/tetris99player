@@ -10,8 +10,8 @@ import cv2
 import numpy as np
 
 from ..config import BOARD_COLS, BOARD_ROWS, Layout, Rect
-from .cells import (Cell, GARBAGE_SAT_MAX, GARBAGE_STD_MAX, HUE_RANGES, SAT_MIN, VAL_MAX_EMPTY,
-                    VAL_MIN_BLOCK, VAL_MIN_GARBAGE, Z_WRAP_MIN)
+from .cells import (Cell, GARBAGE_FLAT_FRAC, GARBAGE_SAT_MAX, GARBAGE_STD_MAX, HUE_RANGES, SAT_MIN,
+                    VAL_MAX_EMPTY, VAL_MIN_BLOCK, VAL_MIN_GARBAGE, Z_WRAP_MIN)
 from .garbage import GarbageMeter, read_garbage_meter
 
 PATCH = 3  # half-size of the sampled square around each cell center
@@ -46,12 +46,15 @@ HUE_TABLE = _hue_table()
 CODE_CELLS = [Cell.EMPTY, Cell.GARBAGE, Cell.GHOST, *PIECE_ORDER]  # index = classification code
 
 
-def classify_hsv(h: np.ndarray, s: np.ndarray, v: np.ndarray, v_std: np.ndarray) -> np.ndarray:
-    """Vectorised version of cells.classify_patch on arrays of per-cell median H, S, V and the
-    std of V over the patch. Returns integer codes indexing CODE_CELLS."""
+def classify_hsv(h: np.ndarray, s: np.ndarray, v: np.ndarray, v_std: np.ndarray,
+                 v_flat: np.ndarray) -> np.ndarray:
+    """Vectorised version of cells.classify_patch on arrays of per-cell median H, S, V, the std of
+    V over the patch, and the fraction of V pixels within 10 of the median. Returns integer codes
+    indexing CODE_CELLS."""
     out = np.zeros(h.shape, np.int8)
     grey = (v >= VAL_MAX_EMPTY) & (s < SAT_MIN)
-    out[grey & (s <= GARBAGE_SAT_MAX) & (v >= VAL_MIN_GARBAGE) & (v_std <= GARBAGE_STD_MAX)] = 1
+    flat = (v_std <= GARBAGE_STD_MAX) | (v_flat >= GARBAGE_FLAT_FRAC)
+    out[grey & (s <= GARBAGE_SAT_MAX) & (v >= VAL_MIN_GARBAGE) & flat] = 1
     coloured = (v >= VAL_MAX_EMPTY) & (s >= SAT_MIN)
     idx = HUE_TABLE[h]
     known = coloured & (idx >= 0)
@@ -78,8 +81,10 @@ class _GridSampler:
         pix = frame[self.ys, self.xs]                        # (200, 49, 3) BGR
         hsv = cv2.cvtColor(pix.reshape(-1, 1, 3), cv2.COLOR_BGR2HSV).reshape(pix.shape)
         med = np.median(hsv, axis=1).astype(np.int32)        # (200, 3)
-        v_std = hsv[:, :, 2].astype(np.float32).std(axis=1)
-        return med[:, 0], med[:, 1], med[:, 2], v_std
+        vals = hsv[:, :, 2].astype(np.int32)
+        v_std = vals.astype(np.float32).std(axis=1)
+        v_flat = (np.abs(vals - med[:, 2:3]) <= 10).mean(axis=1)
+        return med[:, 0], med[:, 1], med[:, 2], v_std, v_flat
 
 
 _samplers: dict[int, _GridSampler] = {}
@@ -93,8 +98,8 @@ def _sampler(layout: Layout) -> _GridSampler:
 
 
 def read_grid(frame: np.ndarray, layout: Layout) -> list[list[Cell]]:
-    h, s, v, v_std = _sampler(layout).medians(frame)
-    codes = classify_hsv(h, s, v, v_std).reshape(BOARD_ROWS, BOARD_COLS)
+    h, s, v, v_std, v_flat = _sampler(layout).medians(frame)
+    codes = classify_hsv(h, s, v, v_std, v_flat).reshape(BOARD_ROWS, BOARD_COLS)
     return [[CODE_CELLS[c] for c in row] for row in codes]
 
 

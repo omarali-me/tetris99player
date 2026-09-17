@@ -47,7 +47,16 @@ VAL_MIN_BLOCK = 150     # coloured but dimmer than this: ghost outline or a HUD 
 GARBAGE_SAT_MAX = 60    # garbage is sat 0-5 (up to ~45 under the animated attack ray); the Targeting pill is ~100
 VAL_MIN_GARBAGE = 95    # garbage is val 111; HUD text medians stay <= ~75
 GARBAGE_STD_MAX = 12    # garbage centres are flat (std 0); text is ~40
+GARBAGE_FLAT_FRAC = 0.6 # ...or, when an animated ray crosses the cell, most pixels still sit near the median
 VAL_MAX_EMPTY = 60
+
+
+def is_flat(values: np.ndarray, median: int) -> bool:
+    """A garbage block's centre is uniform. Accept a low std, or a clear majority of pixels near
+    the median (a bright animated ray crossing the cell leaves the rest of it untouched)."""
+    if float(values.std()) <= GARBAGE_STD_MAX:
+        return True
+    return float((np.abs(values.astype(int) - median) <= 10).mean()) >= GARBAGE_FLAT_FRAC
 
 
 def classify_patch(bgr_patch: np.ndarray) -> Cell:
@@ -57,8 +66,7 @@ def classify_patch(bgr_patch: np.ndarray) -> Cell:
     if v < VAL_MAX_EMPTY:
         return Cell.EMPTY
     if s < SAT_MIN:
-        flat = float(hsv[..., 2].std()) <= GARBAGE_STD_MAX
-        return Cell.GARBAGE if (s <= GARBAGE_SAT_MAX and v >= VAL_MIN_GARBAGE and flat) else Cell.EMPTY
+        return Cell.GARBAGE if (s <= GARBAGE_SAT_MAX and v >= VAL_MIN_GARBAGE and is_flat(hsv[..., 2], v)) else Cell.EMPTY
 
     piece = Cell.EMPTY
     if h >= Z_WRAP_MIN:
