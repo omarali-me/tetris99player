@@ -26,10 +26,11 @@ class Rect:
 class Layout:
     """Pixel positions of the on-screen elements. Calibrate with tools/calibrate.py."""
 
-    board: Rect = field(default_factory=lambda: Rect(795, 145, 330, 660))  # placeholder, calibrate
-    hold: Rect = field(default_factory=lambda: Rect(690, 150, 90, 60))
-    queue: list[Rect] = field(default_factory=lambda: [Rect(1140, 150 + i * 90, 90, 60) for i in range(QUEUE_LEN)])
-    garbage_meter: Rect = field(default_factory=lambda: Rect(775, 145, 15, 660))
+    # Measured on a real 1080p capture (2026-09-17): the grid is 48 px per cell, 10x20 cells.
+    board: Rect = field(default_factory=lambda: Rect(720, 59, 480, 960))
+    hold: Rect = field(default_factory=lambda: Rect(590, 85, 112, 150))
+    queue: list[Rect] = field(default_factory=lambda: [Rect(1218, 88 + i * 89, 112, 89) for i in range(QUEUE_LEN)])
+    garbage_meter: Rect = field(default_factory=lambda: Rect(655, 259, 44, 760))
 
     @property
     def cell_w(self) -> float:

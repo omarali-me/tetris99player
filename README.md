@@ -49,7 +49,7 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 
 ## Status
 - [x] project skeleton, board model, serial protocol, firmware sketch
-- [ ] verify capture card and calibrate layout on real frames
+- [x] capture card verified (Guermok USB3, device 6, 1080p60) and layout calibrated
 - [x] active piece / locked stack tracker driven by queue shifts (tested on synthetic frames)
 - [x] garbage meter reader feeding Cold Clear's incoming-garbage input
 - [ ] tune color thresholds (cells and garbage meter) on real frames
