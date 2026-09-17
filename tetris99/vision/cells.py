@@ -47,7 +47,7 @@ VAL_MIN_BLOCK = 150     # coloured but dimmer than this: ghost outline or a HUD 
 GARBAGE_SAT_MAX = 60    # garbage is sat 0-5 (up to ~45 under the animated attack ray); the Targeting pill is ~100
 VAL_MIN_GARBAGE = 95    # garbage is val 111; HUD text medians stay <= ~75
 GARBAGE_STD_MAX = 12    # garbage centres are flat (std 0); text is ~40
-GARBAGE_FLAT_FRAC = 0.6 # ...or, when an animated ray crosses the cell, most pixels still sit near the median
+GARBAGE_FLAT_FRAC = 0.55# ...or, when an animated ray crosses the cell, most pixels still sit near the median
 VAL_MAX_EMPTY = 60
 
 
