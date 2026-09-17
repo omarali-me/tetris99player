@@ -3,8 +3,8 @@
 Opens a small window; keys are only captured while it has focus, so you can alt-tab away safely.
 Keys are held for as long as you hold them (real key-down / key-up), so menus scroll with DAS.
 
-    .venv/bin/python tools/gamepad.py                     # /dev/ttyUSB0
-    .venv/bin/python tools/gamepad.py --port /dev/ttyACM0
+    .venv/bin/python tools/gamepad.py                     # finds the USB serial adapter automatically
+    .venv/bin/python tools/gamepad.py --port /dev/ttyUSB1  # or name it
     .venv/bin/python tools/gamepad.py --dry               # no serial, just show the state
 
 Keys
@@ -22,7 +22,7 @@ import time
 
 import pygame
 
-from tetris99.config import Settings
+from tetris99.config import Settings, find_serial_port
 from tetris99.control.protocol import Button, Hat, Op, encode
 
 KEY_BUTTONS = {
@@ -65,11 +65,17 @@ def main() -> None:
     ap.add_argument("--baud", type=int, default=Settings().serial_baud)
     ap.add_argument("--dry", action="store_true", help="no serial; show what would be sent")
     args = ap.parse_args()
-    link = Link(None if args.dry else args.port, args.baud)
+    port = None
+    if not args.dry:
+        try:
+            port = find_serial_port(args.port)
+        except FileNotFoundError as e:
+            sys.exit(f"{e}\nUse --dry to run without hardware.")
+    link = Link(port, args.baud)
 
     pygame.init()
     screen = pygame.display.set_mode((520, 300))
-    pygame.display.set_caption("Switch keyboard pad" + ("  (dry run)" if args.dry else f"  {args.port}"))
+    pygame.display.set_caption("Switch keyboard pad" + ("  (dry run)" if args.dry else f"  {port}"))
     font = pygame.font.SysFont("monospace", 16)
     big = pygame.font.SysFont("monospace", 22, bold=True)
 

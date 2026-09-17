@@ -66,5 +66,21 @@ class Layout:
 class Settings:
     capture_device: int | str = 0
     capture_fps: int = 60
-    serial_port: str = "/dev/ttyACM0"
+    serial_port: str = "auto"   # or an explicit path like /dev/ttyUSB0
     serial_baud: int = 115200
+
+
+def find_serial_port(requested: str = "auto") -> str:
+    """Resolve 'auto' to the first USB serial device (the CP2102 adapter or a directly attached
+    Arduino). Raises a clear error listing what was found when nothing suitable is present."""
+    if requested != "auto":
+        return requested
+    from serial.tools import list_ports
+    ports = list(list_ports.comports())
+    for p in ports:
+        if p.device.startswith(("/dev/ttyUSB", "/dev/ttyACM", "COM")):
+            return p.device
+    seen = ", ".join(f"{p.device} ({p.description})" for p in ports) or "none"
+    raise FileNotFoundError(
+        "no USB serial device found. Plug in the USB-to-TTL adapter (or the Arduino directly), "
+        f"or pass --port explicitly. Serial ports seen: {seen}")

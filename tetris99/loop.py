@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Iterable, Protocol
 
-from .config import Layout, Settings
+from .config import Layout, Settings, find_serial_port
 from .engine.board import Board
 from .engine.coldclear import ColdClear, Move, PollStatus, load_weights
 from .engine.executor import Action, compile_move
@@ -188,7 +188,7 @@ def main() -> None:
     if args.source == "synthetic":
         output = src  # the fake Switch consumes the actions itself
     elif args.output == "serial":
-        output = SerialOutput(args.port, Settings().serial_baud)
+        output = SerialOutput(find_serial_port(args.port), Settings().serial_baud)
     else:
         output = DryRunOutput()
 
