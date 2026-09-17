@@ -11,6 +11,7 @@ from .protocol import Button, Hat, Op, encode
 TAP_MS = 34            # ~2 frames, reliably registered
 GAP_MS = 34            # release time between inputs
 DAS_MS = 300           # long enough for auto-shift to carry the piece to a wall
+SOFT_DROP_MS = 400     # long enough to soft drop from the top to the floor
 
 
 class SwitchController:
@@ -60,3 +61,20 @@ class SwitchController:
     def close(self) -> None:
         self.release_all()
         self.ser.close()
+
+
+def run_actions(ctl: "SwitchController", actions) -> None:
+    """Execute a compiled action list from engine.executor on a controller."""
+    from .protocol import Hat
+    for a in actions:
+        k = a.kind
+        if k == "hold": ctl.hold()
+        elif k == "cw": ctl.rotate_cw()
+        elif k == "ccw": ctl.rotate_ccw()
+        elif k == "left": ctl.left()
+        elif k == "right": ctl.right()
+        elif k == "das_left": ctl.das_left()
+        elif k == "das_right": ctl.das_right()
+        elif k == "soft_drop": ctl.hat_hold(Hat.DOWN, SOFT_DROP_MS)
+        elif k == "hard_drop": ctl.hard_drop()
+        else: raise ValueError(k)
