@@ -1,0 +1,17 @@
+{
+  "_about": "Safer, lower stack: penalise height more, value Tetrises less, stop chasing T-spins. Try: tools/watch.py --weights config/weights_safe.json",
+  "height": -60,
+  "top_half": -250,
+  "clear4": 250,
+  "clear1": -60,
+  "clear2": -40,
+  "tspin2": 200,
+  "tspin3": 300,
+  "tslot": [
+    0,
+    40,
+    60,
+    120
+  ],
+  "wasted_t": -40
+}

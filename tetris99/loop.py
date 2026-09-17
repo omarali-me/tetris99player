@@ -14,7 +14,7 @@ from typing import Iterable, Protocol
 
 from .config import Layout, Settings
 from .engine.board import Board
-from .engine.coldclear import ColdClear, Move, PollStatus
+from .engine.coldclear import ColdClear, Move, PollStatus, load_weights
 from .engine.executor import Action, compile_move
 from .vision.board import FrameState, read_frame
 from .vision.tracker import Spawn, Tracker, board_cells
@@ -46,14 +46,15 @@ class SerialOutput:
 class Player:
     """Drives one game. Feed FrameStates via step(); it returns the actions it issued, if any."""
 
-    def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0):
+    def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
+                 weights: dict | None = None):
         self.output = output
+        self.weights = weights
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
         self.threads, self.max_nodes = threads, max_nodes
         self.think_ms = think_ms
         self.expected: Board | None = None
-        self.pending_request = False
         self.pieces = 0
         # After we press hold, the game shows the swapped-in piece and the tracker reports a spawn
         # for it. That spawn is ours to ignore: (piece kind, locked board before our placement).
@@ -62,18 +63,21 @@ class Player:
     def _launch(self, sp: Spawn) -> None:
         if self.bot:
             self.bot.close()
-        self.pending_request = False
         # Mid-game start: the bag is unknown, so speculation on unseen pieces is off.
         self.bot = ColdClear("".join([sp.piece] + sp.queue), threads=self.threads, max_nodes=self.max_nodes,
-                             board=sp.locked, hold=sp.hold, speculate=False)
+                             board=sp.locked, hold=sp.hold, speculate=False, weights=self.weights)
         log.info("bot launched: piece=%s hold=%s queue=%s", sp.piece, sp.hold, "".join(sp.queue))
 
-    def _get_move(self) -> Move | None:
+    def _get_move(self, incoming: int = 0) -> Move | None:
+        """Ask for a move now. Cold Clear thinks continuously from the moment it knows the queue, and
+        a request makes it answer as soon as it can, so we ask only when the piece has spawned and
+        we actually need the answer. `think_ms` (synthetic mode) sleeps first to stand in for the
+        drop/clear animation time a real game gives the bot."""
         assert self.bot
-        if not self.pending_request:
-            self.bot.request_move(0)
-        self.pending_request = False
-        deadline = time.perf_counter() + max(self.think_ms, 5) / 1000
+        if self.think_ms:
+            time.sleep(self.think_ms / 1000)
+        self.bot.request_move(incoming)
+        deadline = time.perf_counter() + 2.0
         while True:
             status, move = self.bot.poll_move()
             if status is PollStatus.MOVE_PROVIDED:
@@ -81,12 +85,9 @@ class Player:
             if status is PollStatus.BOT_DEAD:
                 return None
             if time.perf_counter() > deadline:
-                # give it up to 2s more; the bot only stalls if it lacks queue info
-                status, move = self.bot.poll_move()
-                if time.perf_counter() > deadline + 2.0:
-                    log.warning("bot did not answer in time")
-                    return None
-            time.sleep(0.001)
+                log.warning("bot did not answer within 2s")
+                return None
+            time.sleep(0.0005)
 
     def on_spawn(self, sp: Spawn) -> list[Action] | None:
         t0 = time.perf_counter()
@@ -132,9 +133,6 @@ class Player:
         board.place(final.cells())
         self.expected = board
         self.tracker.expected_locked = board_cells(board)
-        # Think about the next piece during the drop/clear animation.
-        self.bot.request_move(0)
-        self.pending_request = True
         self.pieces += 1
         log.info("#%d %s hold=%s -> %s  (%.0f ms, depth %d)", self.pieces, sp.piece, move.hold,
                  " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth)
@@ -171,8 +169,11 @@ def main() -> None:
     ap.add_argument("--port", default=Settings().serial_port)
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--max-nodes", type=int, default=100_000)
+    ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
+    ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args()
+    weights = load_weights(args.weights) if args.weights else None
     logging.basicConfig(level=logging.DEBUG if args.v else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     layout = Layout.load()
@@ -186,7 +187,8 @@ def main() -> None:
     else:
         output = DryRunOutput()
 
-    player = Player(output, threads=args.threads, max_nodes=args.max_nodes)
+    player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
+                    think_ms=args.think if args.source == "synthetic" else 0)
     t0 = time.perf_counter()
     n = 0
     try:

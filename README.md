@@ -31,6 +31,10 @@ git clone --depth 1 https://github.com/MinusKelvin/cold-clear third_party/cold-c
 ```
 The binding is `tetris99/engine/coldclear.py`; `engine/simulator.py` runs a 7-bag game against the board model.
 
+Evaluation weights: `config/weights.json` lists every Cold Clear weight at its default value with notes.
+Copy it, edit, and pass `--weights my.json` to the loop or the viewer. Only the keys you keep are
+overridden. `config/weights_safe.json` is an example that plays lower and simpler.
+
 ## Running
 ```
 .venv/bin/python -m tetris99.loop --source synthetic            # offline, fake Switch, prints decisions

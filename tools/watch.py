@@ -10,6 +10,7 @@ import time
 
 import cv2
 
+from tetris99.engine.coldclear import load_weights
 from tetris99.loop import Player
 from tetris99.render import draw
 from tetris99.sim_env import SimEnv
@@ -18,15 +19,18 @@ from tetris99.sim_env import SimEnv
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--pieces", type=int, default=500)
+    ap.add_argument("--pieces", type=int, default=5000)
     ap.add_argument("--garbage-every", type=int, default=12, help="2 garbage lines every N pieces (0 = off)")
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--max-nodes", type=int, default=100_000)
     ap.add_argument("--delay", type=int, default=120, help="ms per animation step")
+    ap.add_argument("--think", type=int, default=50, help="ms the bot may think per piece")
+    ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
     args = ap.parse_args()
+    weights = load_weights(args.weights) if args.weights else None
 
     env = SimEnv(seed=args.seed, max_pieces=args.pieces, garbage_every=args.garbage_every)
-    player = Player(env, threads=args.threads, max_nodes=args.max_nodes)
+    player = Player(env, threads=args.threads, max_nodes=args.max_nodes, weights=weights, think_ms=args.think)
     colors: dict[tuple[int, int], str] = {}
     state = {"delay": args.delay, "paused": False, "step": False, "quit": False, "last_actions": ""}
     t_start = time.perf_counter()

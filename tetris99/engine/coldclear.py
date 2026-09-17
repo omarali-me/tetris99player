@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes as C
+import json
 import os
 from dataclasses import dataclass
 from enum import IntEnum
@@ -69,6 +70,46 @@ class CCWeights(C.Structure):
         "mini_tspin1", "mini_tspin2", "perfect_clear", "combo_garbage", "move_time", "wasted_t")] + [
         ("use_bag", C.c_bool), ("timed_jeopardy", C.c_bool), ("stack_pc_damage", C.c_bool),
     ]
+
+
+WEIGHT_FIELDS = [name for name, _ in CCWeights._fields_]
+
+
+def weights_to_dict(w: CCWeights) -> dict:
+    out = {}
+    for name in WEIGHT_FIELDS:
+        v = getattr(w, name)
+        out[name] = list(v) if hasattr(v, "__len__") else v
+    return out
+
+
+def apply_weights(w: CCWeights, overrides: dict) -> None:
+    """Set fields of a CCWeights struct from a dict. Unknown keys are an error so typos surface."""
+    for name, v in overrides.items():
+        if name.startswith("_"):
+            continue  # allow "_comment" style keys
+        if name not in WEIGHT_FIELDS:
+            raise KeyError(f"unknown Cold Clear weight {name!r}; valid: {', '.join(WEIGHT_FIELDS)}")
+        cur = getattr(w, name)
+        if hasattr(cur, "__len__"):
+            if len(v) != len(cur):
+                raise ValueError(f"{name} needs {len(cur)} values, got {len(v)}")
+            for i, x in enumerate(v):
+                cur[i] = int(x)
+        elif isinstance(cur, bool):
+            setattr(w, name, bool(v))
+        else:
+            setattr(w, name, int(v))
+
+
+def load_weights(path: "str | Path") -> dict:
+    return json.loads(Path(path).read_text())
+
+
+def default_weights(fast: bool = False) -> dict:
+    w = CCWeights()
+    (lib().cc_fast_weights if fast else lib().cc_default_weights)(C.byref(w))
+    return weights_to_dict(w)
 
 
 def _load() -> C.CDLL:
@@ -140,7 +181,8 @@ class ColdClear:
 
     def __init__(self, queue: str = "", *, threads: int = 2, max_nodes: int = 100_000,
                  board: Board | None = None, hold: str | None = None, bag_remain: str | None = None,
-                 speculate: bool = True, fast_weights: bool = False):
+                 speculate: bool = True, fast_weights: bool = False,
+                 weights: "dict | str | Path | None" = None):
         L = lib()
         self.opts = CCOptions()
         L.cc_default_options(C.byref(self.opts))
@@ -149,6 +191,8 @@ class ColdClear:
         self.opts.speculate = speculate
         self.weights = CCWeights()
         (L.cc_fast_weights if fast_weights else L.cc_default_weights)(C.byref(self.weights))
+        if weights is not None:
+            apply_weights(self.weights, load_weights(weights) if not isinstance(weights, dict) else weights)
 
         q = (C.c_int * max(1, len(queue)))(*[PIECES.index(p) for p in queue])
         if board is None:
