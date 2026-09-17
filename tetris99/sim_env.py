@@ -9,6 +9,7 @@ from .engine.executor import Action
 from .engine.piece import FallingPiece
 from .engine.simulator import SimGame
 from .vision.board import FrameState
+from .vision.garbage import GarbageMeter
 from .vision.synthetic import render
 
 
@@ -67,6 +68,18 @@ class SimEnv:
             self.on_action(self, None)
 
     # ---- capture side ----
+    def meter(self) -> GarbageMeter:
+        """What the on-screen meter would show: garbage lands after the piece that makes the count hit
+        garbage_every, so it is 'imminent' on that piece and 'pending' on the two pieces before."""
+        if not self.garbage_every:
+            return GarbageMeter(0, 0)
+        until = self.garbage_every - (self.game.pieces_placed % self.garbage_every)
+        if until == 1:
+            return GarbageMeter(0, 2)
+        if until <= 3:
+            return GarbageMeter(2, 0)
+        return GarbageMeter(0, 0)
+
     def frames(self) -> Iterator[FrameState]:
         g = self.game
         for _ in range(self.repeat):
@@ -83,7 +96,7 @@ class SimEnv:
                 idle += 1
                 if idle > self.max_idle:
                     raise RuntimeError("player never acted on the spawned piece")
-            yield render(g.board, self.piece, g.hold, g.queue[1:])
+            yield render(g.board, self.piece, g.hold, g.queue[1:], garbage=self.meter())
 
     def close(self) -> None:
         pass

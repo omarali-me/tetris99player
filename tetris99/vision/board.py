@@ -1,12 +1,13 @@
 """Extract board, hold and queue from a 1080p frame."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from ..config import BOARD_COLS, BOARD_ROWS, Layout
 from .cells import Cell, classify_patch
+from .garbage import GarbageMeter, read_garbage_meter
 
 PATCH = 3  # half-size of the sampled square around each cell center
 
@@ -16,6 +17,7 @@ class FrameState:
     grid: list[list[Cell]]          # [row][col], row 0 = top
     hold: Cell | None
     queue: list[Cell]
+    garbage: GarbageMeter = field(default_factory=lambda: GarbageMeter(0, 0))
 
     def board_str(self) -> str:
         return "\n".join("".join(c.value for c in row) for row in self.grid)
@@ -52,4 +54,5 @@ def read_frame(frame: np.ndarray, layout: Layout) -> FrameState:
         grid=read_grid(frame, layout),
         hold=read_piece_box(frame, layout.hold),
         queue=[read_piece_box(frame, q) for q in layout.queue],
+        garbage=read_garbage_meter(frame, layout),
     )

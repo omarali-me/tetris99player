@@ -47,7 +47,8 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 - [x] project skeleton, board model, serial protocol, firmware sketch
 - [ ] verify capture card and calibrate layout on real frames
 - [x] active piece / locked stack tracker driven by queue shifts (tested on synthetic frames)
-- [ ] tune color thresholds on real frames
+- [x] garbage meter reader feeding Cold Clear's incoming-garbage input
+- [ ] tune color thresholds (cells and garbage meter) on real frames
 - [x] Cold Clear integration and offline simulator
 - [x] input executor: Cold Clear movements -> presses with DAS, replay-verified
 - [x] main loop with dry-run and synthetic modes (`python -m tetris99.loop --source synthetic`)

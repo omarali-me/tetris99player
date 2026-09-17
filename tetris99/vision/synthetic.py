@@ -6,11 +6,12 @@ from ..engine.board import Board
 from ..engine.piece import FallingPiece
 from .board import FrameState
 from .cells import Cell
+from .garbage import GarbageMeter
 from .tracker import board_cells
 
 
 def render(board: Board, piece: FallingPiece | None, hold: str | None, queue: list[str],
-           colors: dict | None = None) -> FrameState:
+           colors: dict | None = None, garbage: GarbageMeter | None = None) -> FrameState:
     grid = [[Cell.EMPTY] * BOARD_COLS for _ in range(BOARD_ROWS)]
     colors = colors or {}
     for x, y in board_cells(board):
@@ -20,4 +21,5 @@ def render(board: Board, piece: FallingPiece | None, hold: str | None, queue: li
         for x, y in piece.cells():
             if y < BOARD_ROWS:
                 grid[BOARD_ROWS - 1 - y][x] = Cell(piece.kind)
-    return FrameState(grid=grid, hold=Cell(hold) if hold else None, queue=[Cell(q) for q in queue])
+    return FrameState(grid=grid, hold=Cell(hold) if hold else None, queue=[Cell(q) for q in queue],
+                      garbage=garbage or GarbageMeter(0, 0))

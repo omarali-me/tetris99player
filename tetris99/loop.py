@@ -59,6 +59,7 @@ class Player:
         # After we press hold, the game shows the swapped-in piece and the tracker reports a spawn
         # for it. That spawn is ours to ignore: (piece kind, locked board before our placement).
         self.own_hold_spawn: tuple[str, set] | None = None
+        self.count_pending_garbage = True
 
     def _launch(self, sp: Spawn) -> None:
         if self.bot:
@@ -107,11 +108,14 @@ class Player:
                 log.info("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
-        move = self._get_move()
+        # Cold Clear's `incoming` is the garbage expected after placing this piece. Red segments are
+        # certain; yellow ones may still be cancelled by our own attack, so count them with a discount.
+        incoming = sp.imminent + (sp.incoming - sp.imminent) // 2 if self.count_pending_garbage else sp.imminent
+        move = self._get_move(incoming)
         if move is None:
             log.error("no move (bot dead?) — relaunching from current board")
             self._launch(sp)
-            move = self._get_move()
+            move = self._get_move(incoming)
             if move is None:
                 return None
 
@@ -134,8 +138,9 @@ class Player:
         self.expected = board
         self.tracker.expected_locked = board_cells(board)
         self.pieces += 1
-        log.info("#%d %s hold=%s -> %s  (%.0f ms, depth %d)", self.pieces, sp.piece, move.hold,
-                 " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth)
+        log.info("#%d %s hold=%s -> %s  (%.0f ms, depth %d%s)", self.pieces, sp.piece, move.hold,
+                 " ".join(a.kind for a in actions), (time.perf_counter() - t0) * 1000, move.depth,
+                 f", incoming {sp.incoming}" if sp.incoming else "")
         return actions
 
     def step(self, fs: FrameState) -> list[Action] | None:

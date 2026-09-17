@@ -39,10 +39,10 @@ def main() -> None:
                 if cell != ".":
                     x, y = layout.cell_center(r, c)
                     cv2.circle(vis, (x, y), 5, COLORS[cell], -1)
-        for box in [layout.hold, *layout.queue]:
+        for box in [layout.hold, *layout.queue, layout.garbage_meter]:
             cv2.rectangle(vis, (box.x, box.y), (box.x + box.w, box.y + box.h), (255, 255, 0), 1)
         now = time.perf_counter()
-        txt = f"{1 / (now - last):.0f} fps  hold={state.hold and state.hold.value}  queue={''.join(q.value if q else '?' for q in state.queue)}"
+        txt = f"{1 / (now - last):.0f} fps  hold={state.hold and state.hold.value}  queue={''.join(q.value if q else '?' for q in state.queue)}  garbage={state.garbage.pending}+{state.garbage.imminent}red"
         last = now
         cv2.putText(vis, txt, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.imshow("preview", cv2.resize(vis, (1280, 720)))

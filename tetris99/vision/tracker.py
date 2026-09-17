@@ -38,6 +38,8 @@ class Spawn:
     queue: list[str]
     garbage_arrived: bool  # locked board differed from what we predicted
     new_pieces: list[str]  # queue entries revealed by this spawn (0, 1 or 2 pieces)
+    incoming: int = 0      # garbage lines shown on the meter at spawn
+    imminent: int = 0      # of those, lines already committed (red)
 
 
 @dataclass
@@ -182,7 +184,8 @@ class Tracker:
             self.expected_locked = None
             st.locked, st.active, st.current = locked, active, spawned
             st.spawns += 1
-            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces)
+            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces,
+                         fs.garbage.total, fs.garbage.imminent)
 
         # between spawns: attribute non-locked cells to the active piece
         visible = set(cells)
