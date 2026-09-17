@@ -14,7 +14,7 @@ from typing import Iterable, Protocol
 
 from .config import Layout, Settings, find_serial_port
 from .engine.board import Board
-from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights
+from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights, valid_sequence
 from .engine.executor import Action, compile_move
 from .vision.board import FrameState, read_frame
 from .vision.tracker import Spawn, Tracker, board_cells
@@ -97,6 +97,16 @@ class Player:
 
     def on_spawn(self, sp: Spawn) -> list[Action] | None:
         t0 = time.perf_counter()
+        if not valid_sequence([sp.piece] + sp.queue, sp.hold):
+            # A misread (menu, countdown, KO screen). Drop the bot; it is relaunched from a sane reading.
+            log.warning("ignoring impossible reading: piece=%s hold=%s queue=%s", sp.piece, sp.hold, "".join(sp.queue))
+            if self.bot:
+                self.bot.close()
+                self.bot = None
+            self.expected = None
+            self.target = None
+            self.plan = []
+            return None
         if self.bot is None:
             self._launch(sp)
         else:

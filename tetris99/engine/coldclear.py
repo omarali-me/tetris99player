@@ -179,6 +179,22 @@ class PlanStep:
                    [int(p.cleared_lines[i]) for i in range(4) if p.cleared_lines[i] >= 0])
 
 
+def valid_sequence(pieces: "str | list[str]", hold: str | None = None) -> bool:
+    """7-bag sanity: every entry is a piece letter, and no piece occurs more than twice within any
+    7 consecutive pieces of the sequence (7 consecutive pieces span at most two bags). The hold
+    piece only has to be a valid letter: it left the sequence earlier, so it is not bound by the
+    window. Cold Clear aborts the whole process on an impossible bag, so this is checked before
+    anything reaches it."""
+    seq = list(pieces)
+    if any(p not in PIECES for p in seq) or (hold is not None and hold not in PIECES):
+        return False
+    for i in range(len(seq)):
+        window = seq[i : i + 7]
+        if any(window.count(p) > 2 for p in set(window)):
+            return False
+    return True
+
+
 def board_to_field(board: Board) -> C.Array:
     field = (C.c_bool * 400)()
     for y in range(40):
@@ -195,6 +211,8 @@ class ColdClear:
                  board: Board | None = None, hold: str | None = None, bag_remain: str | None = None,
                  speculate: bool = True, fast_weights: bool = False,
                  weights: "dict | str | Path | None" = None):
+        if not valid_sequence(queue, hold):
+            raise ValueError(f"impossible piece sequence for 7-bag: hold={hold} queue={queue}")
         L = lib()
         self.opts = CCOptions()
         L.cc_default_options(C.byref(self.opts))

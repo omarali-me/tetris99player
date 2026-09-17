@@ -52,3 +52,16 @@ def test_plan_matches_move():
     assert move is not None and bot.plan
     assert sorted(bot.plan[0].cells) == sorted(move.cells)
     assert len(bot.plan) >= 2
+
+
+def test_impossible_sequences_are_rejected():
+    from tetris99.engine.coldclear import valid_sequence
+    assert valid_sequence("LIIIIOO") is False          # the crash from the live run
+    assert valid_sequence("IOTLJSZ") is True
+    assert valid_sequence("IOTLJSZI") is True           # second bag starts
+    assert valid_sequence("IIOTLJS", hold="I") is True   # hold is outside the window rule
+    assert valid_sequence("IIOTLJSI") is False           # three I within 7 in the sequence itself
+    assert valid_sequence("IOTLJS", hold="Z") is True
+    assert valid_sequence("IOTXJS") is False            # not a piece
+    with pytest.raises(ValueError):
+        coldclear.ColdClear("IIIIOO", threads=1, max_nodes=100)
