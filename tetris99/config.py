@@ -80,7 +80,8 @@ def find_serial_port(requested: str = "auto") -> str:
     for p in ports:
         if p.device.startswith(("/dev/ttyUSB", "/dev/ttyACM", "COM")):
             return p.device
-    seen = ", ".join(f"{p.device} ({p.description})" for p in ports) or "none"
+    usb = [p for p in ports if not p.device.startswith("/dev/ttyS")]  # ttyS* are legacy motherboard UARTs
+    seen = ", ".join(f"{p.device} ({p.description})" for p in usb) or "none"
     raise FileNotFoundError(
         "no USB serial device found. Plug in the USB-to-TTL adapter (or the Arduino directly), "
         f"or pass --port explicitly. Serial ports seen: {seen}")
