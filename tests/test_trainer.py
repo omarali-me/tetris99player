@@ -71,3 +71,34 @@ def test_layout_rows_survive_clears():
     # legal in sequence on the ORIGINAL board (this is what mapping guarantees)
     apply_layout(Board(list(b.rows)), laid)
     player.close()
+
+
+def test_remaining_steps_follow_the_live_board_after_a_clear():
+    """After step 1 is placed and its row has cleared, the remaining steps are expressed in the
+    live board's coordinates (no more offset for that clear)."""
+    from tetris99.loop import DryRunOutput
+    player = Player(DryRunOutput(), trainer=True)
+    player.plan_steps = [PlanStep("I", [(0, 0), (1, 0), (2, 0), (3, 0)], [0]),
+                         PlanStep("O", [(0, 0), (1, 0), (0, 1), (1, 1)], [])]
+    laid, clears = player.layout()
+    assert sorted(laid[1][1]) == [(0, 1), (0, 2), (1, 1), (1, 2)] and clears == [(0, 1)]  # before: shifted up
+    player.laid_done = 1
+    laid, clears = player.layout()
+    assert sorted(laid[0][1]) == [(0, 0), (0, 1), (1, 0), (1, 1)] and clears == []       # after: on the floor
+    numbered, _ = player.shown()
+    assert numbered[0][0] == 2                                                             # keeps its number
+
+
+def test_visibility_toggles():
+    from tetris99.loop import DryRunOutput
+    player = Player(DryRunOutput(), trainer=True)
+    player.plan_steps = [PlanStep("I", [(0, 0), (1, 0), (2, 0), (3, 0)], []) for _ in range(4)]
+    assert len(player.shown()[0]) == 4
+    player.toggle_all(); assert player.shown()[0] == []
+    player.toggle_all(); assert len(player.shown()[0]) == 4
+    player.show_next(); assert [n for n, _ in player.shown()[0]] == [1]
+    player.show_next(); assert [n for n, _ in player.shown()[0]] == [1, 2]
+    player.laid_done = 1   # piece 1 placed: still two upcoming shown, numbered from 2
+    player.visible = max(1, player.visible - 1)
+    assert [n for n, _ in player.shown()[0]] == [2]
+    player.close()

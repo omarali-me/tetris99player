@@ -29,14 +29,14 @@ def rows_to_original(y: int, cleared_orig: list[int]) -> int:
     return y
 
 
-def map_plan(steps: list[PlanStep]) -> tuple[list[tuple[str, list[tuple[int, int]]]], list[tuple[int, int]]]:
+def map_plan(steps: list[PlanStep], first_number: int = 1) -> tuple[list[tuple[str, list[tuple[int, int]]]], list[tuple[int, int]]]:
     """Cold Clear gives each step in the coordinates of the board as it is when that piece is
-    placed, i.e. after earlier clears. Map everything onto the board as it is NOW.
-    Returns ([(piece, cells)], [(row, step number that clears it)])."""
+    placed, i.e. after earlier clears. Map everything onto the board as it is at the FIRST of
+    these steps. Returns ([(piece, cells)], [(row, step number that clears it)])."""
     cleared_orig: list[int] = []
     laid: list[tuple[str, list[tuple[int, int]]]] = []
     clears: list[tuple[int, int]] = []
-    for i, step in enumerate(steps, start=1):
+    for i, step in enumerate(steps, start=first_number):
         cells = [(x, rows_to_original(y, cleared_orig)) for x, y in step.cells]
         laid.append((step.piece, cells))
         # all of this step's cleared rows share the same (pre-clear) coordinates
@@ -81,10 +81,9 @@ class Player:
         self.target: tuple[str, list[tuple[int, int]], bool] | None = None  # (piece, cells, hold first)
         self.plan: list[PlanStep] = []
         self.mode = "normal"
-        self.laid: list[tuple[str, list[tuple[int, int]]]] = []  # coach layout: (piece, cells) per step
-        self.laid_clears: list[tuple[int, int]] = []               # (row, step) rows that clear during the layout
-        self.laid_at_spawn = 0
-        self.laid_done = 0                                          # steps already placed (hidden from the overlay)
+        self.plan_steps: list[PlanStep] = []   # coach layout as Cold Clear gave it (per-step coordinates)
+        self.laid_done = 0                      # steps already placed: hidden, and the rest re-mapped to the live board
+        self.visible: int | None = None         # None = show all remaining steps, k = show the first k
         self._last_locked: set = set()
         self.tracker = Tracker()
         self.bot: ColdClear | None = None
@@ -236,28 +235,55 @@ class Player:
                     break
                 time.sleep(0.002)
             steps = list(bot.plan) if move else []
-        laid, self.laid_clears = map_plan(steps)
-        self.laid = laid
-        self.laid_at_spawn = st.spawns
+        self.plan_steps = steps
         self.laid_done = 0
+        self.visible = None
         self._last_locked = set(st.locked)
+        laid, _ = self.layout()
         log.info("coach [%s]: %s", self.mode, " ".join(f"{i + 1}:{p}" for i, (p, _) in enumerate(laid)) or "no plan")
         return laid
+
+    @property
+    def laid(self) -> list[tuple[str, list[tuple[int, int]]]]:
+        return self.layout()[0] if self.plan_steps else []
+
+    def layout(self) -> tuple[list[tuple[str, list[tuple[int, int]]]], list[tuple[int, int]]]:
+        """Remaining steps mapped onto the board as it is now (earlier steps' clears have happened)."""
+        return map_plan(self.plan_steps[self.laid_done:], first_number=self.laid_done + 1)
+
+    def shown(self) -> tuple[list[tuple[int, tuple[str, list[tuple[int, int]]]]], list[tuple[int, int]]]:
+        """(numbered remaining steps to draw, clear markers), honouring the h / j visibility setting."""
+        laid, clears = self.layout()
+        numbered = list(enumerate(laid, start=self.laid_done + 1))
+        if self.visible is not None:
+            numbered = numbered[: self.visible]
+            last = numbered[-1][0] if numbered else 0
+            clears = [(r, n) for r, n in clears if n <= last]
+        return numbered, clears
+
+    def toggle_all(self) -> None:          # h
+        self.visible = 0 if self.visible is None else None
+
+    def show_next(self) -> None:           # j
+        remaining = len(self.plan_steps) - self.laid_done
+        self.visible = 1 if self.visible in (None, 0) else min(remaining, self.visible + 1)
 
     def coach_step(self, fs: FrameState) -> None:
         """Trainer mode per frame: keep tracking. Each time the locked stack changes a piece was
         placed, so the next step of the layout is hidden (hold presses change nothing and are not
         counted). The layout is cleared once every step is placed."""
         sp = self.tracker.update(fs)
-        if sp is None or not self.laid:
+        if sp is None or not self.plan_steps:
             return
         locked = board_cells(sp.locked)
         if locked != self._last_locked:
             self._last_locked = locked
             self.laid_done += 1
-            if self.laid_done >= len(self.laid):
+            if self.visible:
+                self.visible = max(1, self.visible - 1)  # keep the same number of upcoming steps visible
+            if self.laid_done >= len(self.plan_steps):
                 log.info("layout complete; press space for the next one")
-                self.laid, self.laid_clears, self.laid_done = [], [], 0
+                self.plan_steps, self.laid_done = [], 0
 
     def step(self, fs: FrameState) -> list[Action] | None:
         if self.trainer:
@@ -338,19 +364,18 @@ class LiveView:
             cv2.rectangle(vis, (S(b.x), S(b.y)), (S(b.x + b.w), S(b.y + b.h)), (0, 255, 0), 1)
 
         # coach layout: translucent fills, one outline per tetromino, a big number on each
-        todo = list(enumerate(self.player.laid, start=1))[self.player.laid_done:]  # placed steps are hidden
+        todo, clears = self.player.shown() if coach else ([], [])
         if todo:
             fill = vis.copy()
             for _, (piece, cells) in todo:
                 col = self.COLORS.get(piece, (200, 200, 200))
-                light = tuple(min(255, int(c * 0.6 + 100)) for c in col)  # pastel: keeps the board readable
                 for (x, y) in cells:
                     if y < 20:
-                        p0, p1 = cell_box(x, y, 1)
-                        cv2.rectangle(fill, p0, p1, light, -1)
-            cv2.addWeighted(fill, 0.5, vis, 0.5, 0, vis)
+                        p0, p1 = cell_box(x, y, 2)
+                        cv2.rectangle(fill, p0, p1, col, -1)
+            cv2.addWeighted(fill, 0.22, vis, 0.78, 0, vis)  # faint tint: ghost and placed blocks show through
             b = L.board
-            for row, step in self.player.laid_clears:
+            for row, step in clears:
                 if row < 20:
                     y = S(L.cell_center(19 - row, 0)[1])
                     for x0 in range(S(b.x), S(b.x + b.w), 12):
@@ -363,12 +388,17 @@ class LiveView:
                 for (x, y) in cells:
                     if y >= 20:
                         continue
-                    p0, p1 = cell_box(x, y, 1)
-                    # draw only the edges not shared with another cell of this piece
-                    if (x, y + 1) not in cs: cv2.line(vis, (p0[0], p0[1]), (p1[0], p0[1]), (255, 255, 255), 2)
-                    if (x, y - 1) not in cs: cv2.line(vis, (p0[0], p1[1]), (p1[0], p1[1]), (255, 255, 255), 2)
-                    if (x - 1, y) not in cs: cv2.line(vis, (p0[0], p0[1]), (p0[0], p1[1]), (255, 255, 255), 2)
-                    if (x + 1, y) not in cs: cv2.line(vis, (p1[0], p0[1]), (p1[0], p1[1]), (255, 255, 255), 2)
+                    p0, p1 = cell_box(x, y, 2)
+                    # outline in the piece colour with a dark halo; only edges not shared within the piece
+                    edges = []
+                    if (x, y + 1) not in cs: edges.append(((p0[0], p0[1]), (p1[0], p0[1])))
+                    if (x, y - 1) not in cs: edges.append(((p0[0], p1[1]), (p1[0], p1[1])))
+                    if (x - 1, y) not in cs: edges.append(((p0[0], p0[1]), (p0[0], p1[1])))
+                    if (x + 1, y) not in cs: edges.append(((p1[0], p0[1]), (p1[0], p1[1])))
+                    for a, b_ in edges:
+                        cv2.line(vis, a, b_, (0, 0, 0), 4)
+                    for a, b_ in edges:
+                        cv2.line(vis, a, b_, (255, 255, 255), 2)
                 vis_cells = [c for c in cells if c[1] < 20]
                 if vis_cells:
                     cx = sum(S(L.cell_center(19 - y, x)[0]) for x, y in vis_cells) / len(vis_cells)
@@ -395,9 +425,11 @@ class LiveView:
         if coach:
             hud = [
                 f"COACH [{self.player.mode}]   piece={st.current or '?'} hold={st.hold or '-'} next={''.join(st.queue) or '?'}"
-                + (f"   layout: {self.player.laid_done}/{len(self.player.laid)} placed" if self.player.laid else "   press SPACE to lay out"),
+                + (f"   layout: {self.player.laid_done}/{len(self.player.plan_steps)} placed"
+                   + ("   (hidden: h)" if self.player.visible == 0 else f"   (showing {self.player.visible})" if self.player.visible else "")
+                   if self.player.plan_steps else "   press SPACE to lay out"),
                 self.last_line,
-                "space: lay out   t: T-spins   a: all clears   n: normal   s: save frame   q: quit",
+                "space: new layout   h: hide/show   j: reveal one more   t: T-spins   a: all clears   n: normal   s: save   q: quit",
             ]
         else:
             hud = [
@@ -421,6 +453,10 @@ class LiveView:
         if self.player.trainer:
             if k == ord(" "):
                 self.player.plan_now()
+            elif k == ord("h"):
+                self.player.toggle_all()
+            elif k == ord("j"):
+                self.player.show_next()
             elif k == ord("t"):
                 self.player.set_mode("tspin")
             elif k == ord("a"):
