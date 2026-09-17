@@ -1,0 +1,451 @@
+<title>Tetris 99 Bot Field Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f6f7fa; --surface:#ffffff; --ink:#1b2130; --ink-2:#4a5468; --ink-3:#7b8497;
+  --line:#d9dde6; --line-2:#eceef3; --accent:#2f4bd6; --accent-soft:#e6eafc; --accent-ink:#1f36a8;
+  --code-bg:#eef0f5; --note-bg:#f0f2f8;
+  --I:#00b7c9; --O:#f2c200; --T:#a03fbf; --S:#3cb44b; --Z:#e0332f; --J:#2f4bd6; --L:#f28c1a; --G:#9aa1ad;
+  --shadow:0 1px 2px rgba(27,33,48,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12151c; --surface:#181c25; --ink:#e7eaf1; --ink-2:#b4bccb; --ink-3:#7f8899;
+    --line:#2b313f; --line-2:#222734; --accent:#8fa3ff; --accent-soft:#1f2748; --accent-ink:#b9c6ff;
+    --code-bg:#1e222d; --note-bg:#1a1f2b; --G:#6b7280; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12151c; --surface:#181c25; --ink:#e7eaf1; --ink-2:#b4bccb; --ink-3:#7f8899;
+  --line:#2b313f; --line-2:#222734; --accent:#8fa3ff; --accent-soft:#1f2748; --accent-ink:#b9c6ff;
+  --code-bg:#1e222d; --note-bg:#1a1f2b; --G:#6b7280; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:0 96px}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",sans-serif;text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(34px,5vw,52px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:clamp(26px,3.2vw,34px);font-weight:700;margin-top:72px;padding-top:24px;border-top:2px solid var(--ink)}
+h3{font-size:20px;font-weight:700;margin-top:40px}
+h4{font:600 15px/1.4 "IBM Plex Sans",sans-serif;margin:28px 0 8px;color:var(--ink)}
+p{margin:14px 0;max-width:68ch}
+ul,ol{max-width:68ch;padding-left:22px}
+li{margin:6px 0}
+a{color:var(--accent-ink)}
+code,pre,kbd{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:.92em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px}
+pre{background:var(--code-bg);padding:14px 16px;border-radius:6px;overflow-x:auto;max-width:68ch;line-height:1.5;margin:14px 0}
+pre code{background:none;padding:0}
+.eyebrow{font:500 12px/1 "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:0 56px}
+@media (min-width:1000px){.wrap{grid-template-columns:220px minmax(0,1fr)}}
+nav.toc{display:none}
+@media (min-width:1000px){
+  nav.toc{display:block;position:sticky;top:24px;align-self:start;padding-top:96px;font-size:13.5px}
+  nav.toc a{display:block;color:var(--ink-2);text-decoration:none;padding:4px 0;border-left:2px solid transparent;padding-left:10px}
+  nav.toc a:hover{color:var(--ink)}
+  nav.toc .ch{margin-top:14px;font-weight:600;color:var(--ink)}
+  nav.toc .ch + a, nav.toc a.sub{color:var(--ink-3)}
+}
+header{padding-top:72px;padding-bottom:12px}
+header p.lede{font-size:19px;color:var(--ink-2);max-width:60ch;margin-top:18px}
+.pieces{display:flex;gap:6px;margin:26px 0 0}
+.pieces i{display:block;width:18px;height:18px;border-radius:2px}
+table{border-collapse:collapse;width:100%;max-width:68ch;font-size:14.5px;margin:16px 0;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--ink-2);font-size:13px;letter-spacing:.02em}
+td code{white-space:nowrap}
+.tblwrap{overflow-x:auto;max-width:68ch}
+.note{background:var(--note-bg);border-left:3px solid var(--accent);padding:12px 16px;border-radius:0 6px 6px 0;max-width:68ch;margin:20px 0}
+.note p{margin:6px 0}
+.try{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;max-width:68ch;margin:28px 0;box-shadow:var(--shadow)}
+.try .eyebrow{color:var(--accent-ink)}
+.try pre{margin:10px 0 0}
+figure{margin:24px 0;max-width:68ch}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-size:13.5px;color:var(--ink-2);margin-top:8px}
+.grid-fig{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;max-width:68ch;font-size:15px}
+.kv dt{font-family:"IBM Plex Mono",monospace;font-size:13.5px;color:var(--accent-ink);white-space:nowrap}
+.kv dd{margin:0;color:var(--ink-2)}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+svg text{font-family:"IBM Plex Mono",monospace;font-size:12px;fill:var(--ink-2)}
+svg .lbl{fill:var(--ink);font-family:"IBM Plex Sans",sans-serif;font-size:13px}
+svg .box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+svg .arrow{stroke:var(--ink-3);stroke-width:1.4;fill:none;marker-end:url(#ah)}
+.glossary dt{font-weight:600;margin-top:12px}
+.glossary dd{margin:2px 0 0;color:var(--ink-2);max-width:66ch}
+@media (prefers-reduced-motion:no-preference){a{transition:color .15s}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <a href="#pipeline">The pipeline</a>
+  <div class="ch">1 · Cold Clear</div>
+  <a class="sub" href="#cc-board">Board and pieces</a>
+  <a class="sub" href="#cc-moves">Finding every placement</a>
+  <a class="sub" href="#cc-eval">Scoring a board</a>
+  <a class="sub" href="#cc-search">The search</a>
+  <a class="sub" href="#cc-async">Talking to it</a>
+  <div class="ch">2 · The controller</div>
+  <a class="sub" href="#usb">How USB devices introduce themselves</a>
+  <a class="sub" href="#hid">The 8-byte report</a>
+  <a class="sub" href="#why">Why the Switch believes it</a>
+  <a class="sub" href="#serial">PC to Arduino</a>
+  <a class="sub" href="#timing">Timing and DAS</a>
+  <div class="ch">3 · Vision</div>
+  <a class="sub" href="#frame">What a frame is</a>
+  <a class="sub" href="#capture">Getting frames in</a>
+  <a class="sub" href="#hsv">Color and HSV</a>
+  <a class="sub" href="#cells">Cells to symbols</a>
+  <a class="sub" href="#tracker">Symbols to game state</a>
+  <a class="sub" href="#loop">Closing the loop</a>
+  <div class="ch">Glossary</div>
+  <a class="sub" href="#glossary">Terms</a>
+</nav>
+
+<main>
+<header>
+  <div class="eyebrow">tetris99player · internals</div>
+  <h1 style="margin-top:14px">Tetris 99 Bot Field Guide</h1>
+  <p class="lede">How the bot decides, how a microcontroller becomes a Nintendo controller, and how 6 million pixels a frame turn into ten columns of symbols. Written from the source as it stands in the repository today.</p>
+  <div class="pieces" aria-hidden="true"><i style="background:var(--I)"></i><i style="background:var(--O)"></i><i style="background:var(--T)"></i><i style="background:var(--S)"></i><i style="background:var(--Z)"></i><i style="background:var(--J)"></i><i style="background:var(--L)"></i></div>
+</header>
+
+<h2 id="pipeline" style="margin-top:40px">The pipeline in one picture</h2>
+<p>Every piece the bot places goes through the same five stages. Keep this picture in mind, because each chapter below zooms into one part of it.</p>
+<figure>
+<svg viewBox="0 0 680 150" role="img" aria-label="Pipeline: Switch to capture card to vision to Cold Clear to executor to Arduino back to Switch">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ink-3)"/></marker></defs>
+  <g>
+    <rect class="box" x="10" y="40" width="96" height="46" rx="6"/><text class="lbl" x="58" y="60" text-anchor="middle">Switch</text><text x="58" y="76" text-anchor="middle">HDMI out</text>
+    <rect class="box" x="146" y="40" width="96" height="46" rx="6"/><text class="lbl" x="194" y="60" text-anchor="middle">Capture card</text><text x="194" y="76" text-anchor="middle">1080p60 MJPG</text>
+    <rect class="box" x="282" y="40" width="96" height="46" rx="6"/><text class="lbl" x="330" y="60" text-anchor="middle">Vision</text><text x="330" y="76" text-anchor="middle">grid · queue · hold</text>
+    <rect class="box" x="418" y="40" width="96" height="46" rx="6"/><text class="lbl" x="466" y="60" text-anchor="middle">Cold Clear</text><text x="466" y="76" text-anchor="middle">placement + path</text>
+    <rect class="box" x="554" y="40" width="116" height="46" rx="6"/><text class="lbl" x="612" y="60" text-anchor="middle">Executor</text><text x="612" y="76" text-anchor="middle">taps · DAS · drop</text>
+    <path class="arrow" d="M106 63 H144"/><path class="arrow" d="M242 63 H280"/><path class="arrow" d="M378 63 H416"/><path class="arrow" d="M514 63 H552"/>
+    <path class="arrow" d="M612 86 V118 H58 V88"/>
+    <text x="335" y="132" text-anchor="middle">serial → Arduino (HORI pad emulation) → USB → Switch</text>
+  </g>
+</svg>
+<figcaption>Vision reads the screen, Cold Clear picks a placement, the executor turns the path into presses, the Arduino delivers them as a wired controller. Then the next frame confirms the piece landed where predicted.</figcaption>
+</figure>
+
+<!-- ===================================================== CHAPTER 1 -->
+<h2 id="cc">1 · Cold Clear</h2>
+<p>Cold Clear is a versus Tetris bot written in Rust by MinusKelvin. Its job is to answer one question, over and over: given this board, this piece, the hold slot, and the next six pieces, where should this piece go? Everything in it serves that question. Three parts do the work: a move generator that lists every reachable placement, an evaluator that scores the board a placement leaves behind, and a search that looks several pieces ahead through the queue.</p>
+
+<h3 id="cc-board">1.1 Board and pieces</h3>
+<p>The board is 10 columns by 40 rows. Only 20 are visible on screen; the rest is headroom so a piece can spawn and be evaluated even when the stack is high. Each row is stored as an integer where bit <code>x</code> is set when column <code>x</code> is filled. This is called a bitboard, and it makes the common questions cheap: a row is full when it equals <code>0b1111111111</code>, a cell is filled when <code>row &gt;&gt; x &amp; 1</code> is 1, and clearing lines is deleting integers from a list.</p>
+<p>Our own <code>tetris99/engine/board.py</code> uses the identical scheme, which is why the two sides can compare boards cell for cell.</p>
+<p>A falling piece is a kind, a rotation state, and the position of its rotation point. The four cells are offsets from that point. North orientation is the table below; the other three are the same offsets rotated, which is why the code stores only seven shapes and derives 28.</p>
+<div class="tblwrap"><table>
+<tr><th>piece</th><th>cells relative to the rotation point (x right, y up)</th><th>color</th></tr>
+<tr><td>I</td><td><code>(-1,0) (0,0) (1,0) (2,0)</code></td><td><i class="sw" style="background:var(--I)"></i>cyan</td></tr>
+<tr><td>O</td><td><code>(0,0) (1,0) (0,1) (1,1)</code></td><td><i class="sw" style="background:var(--O)"></i>yellow</td></tr>
+<tr><td>T</td><td><code>(-1,0) (0,0) (1,0) (0,1)</code></td><td><i class="sw" style="background:var(--T)"></i>purple</td></tr>
+<tr><td>L</td><td><code>(-1,0) (0,0) (1,0) (1,1)</code></td><td><i class="sw" style="background:var(--L)"></i>orange</td></tr>
+<tr><td>J</td><td><code>(-1,0) (0,0) (1,0) (-1,1)</code></td><td><i class="sw" style="background:var(--J)"></i>blue</td></tr>
+<tr><td>S</td><td><code>(-1,0) (0,0) (0,1) (1,1)</code></td><td><i class="sw" style="background:var(--S)"></i>green</td></tr>
+<tr><td>Z</td><td><code>(-1,1) (0,1) (0,0) (1,0)</code></td><td><i class="sw" style="background:var(--Z)"></i>red</td></tr>
+</table></div>
+<p>Rotation follows SRS, the Super Rotation System that every guideline Tetris uses. When a rotation would collide, the piece tries up to five alternative offsets called kicks, in a fixed order. Each rotation state has a table of five "rotation points"; the kick to try is the difference between the old state's point and the new state's point. That is how a T piece slides under an overhang to make a T-spin: the plain rotation collides, the second or third kick lands it in the slot. The I piece has its own tables, and the O piece's "kicks" are all identical so it visibly rotates in place.</p>
+<p>Pieces spawn with the rotation point at column 4, row 19, or row 20 if 19 is blocked. This detail matters for us because the tracker looks for the spawned piece in exactly that zone.</p>
+
+<h3 id="cc-moves">1.2 Finding every placement</h3>
+<p>The function <code>find_moves</code> in <code>libtetris/src/moves.rs</code> takes a board and a spawned piece and returns every distinct position the piece can lock in, each with the shortest input sequence to get there. It is a shortest-path search over piece states, where a state is position plus rotation and the edges are the five moves: left, right, clockwise, counter-clockwise, and sonic drop (soft drop to the floor).</p>
+<p>Two tricks make it fast.</p>
+<ul>
+<li><strong>Skipping the air.</strong> If every column is below height 16, the piece can reach any column and rotation without touching the stack, so the search starts from all those positions at once instead of walking there one tap at a time. Each starting position is sonic-dropped and locked to produce the "obvious" placements immediately.</li>
+<li><strong>A priority queue by input time.</strong> From every dropped position it then tries the five moves again, so it discovers tucks and spins that are only reachable after landing. States are popped cheapest first, so the first time a locking position is found, its path is already the shortest. A hash set of visited states stops it re-exploring.</li>
+</ul>
+<p>The output includes the path, which is the movement list our executor replays. That is why a Cold Clear move can say "left, clockwise, drop, clockwise" and be certain it ends where it promised.</p>
+<p>There are movement modes. We use <code>0G</code>, meaning the piece does not fall while we move it, which is true for the first minutes of a Tetris 99 game. In <code>20G</code> mode the piece is on the floor the moment it spawns and only floor-level moves count; that is how late-game speed works, and it is a one-field switch if we ever need it.</p>
+
+<h3 id="cc-eval">1.3 Scoring a board</h3>
+<p>After each placement the evaluator, in <code>bot/src/evaluation/standard.rs</code>, produces two numbers. The <strong>value</strong> describes the board that is left: how safe and productive it looks. The <strong>reward</strong> describes what the placement itself earned. Both are weighted sums of features, and the weights are the numbers in <code>config/weights.json</code>. The value of a line of play is the sum of rewards along the way plus the value of the final board.</p>
+
+<h4>Value features (the shape of the stack)</h4>
+<dl class="kv">
+<dt>height</dt><dd>the tallest column, times a negative weight</dd>
+<dt>top_half, top_quarter</dt><dd>extra penalties that only switch on above row 10 and row 15: <code>max(h−10,0)</code> and <code>max(h−15,0)</code>. Panic grows sharply near the top.</dd>
+<dt>well</dt><dd>the lowest column is called the well. Its depth is how many rows are completely filled except for that column. Depth is rewarded up to <code>max_well_depth</code>, and <code>well_column</code> says how much the bot likes the well in each column. The default table prefers columns 4 and 6 in the middle, slightly dislikes column 8.</dd>
+<dt>bumpiness</dt><dd>the sum of height differences between neighbouring columns, ignoring the well. Also the sum of squares, so one tall spike hurts more than several small steps.</dd>
+<dt>cavity_cells</dt><dd>empty cells with something above them that cannot be reached from the side. Real holes. The single largest penalty, −173 each.</dd>
+<dt>overhang_cells</dt><dd>empty cells under a lip that could still be filled by sliding in from a lower neighbour. Cheaper than a cavity.</dd>
+<dt>covered_cells</dt><dd>filled cells sitting above a hole. Each one is a cell you must clear before the hole is fixable.</dd>
+<dt>row_transitions</dt><dd>how many times a row switches between filled and empty as you scan across, computed with a bit trick: <code>(row | 1&lt;&lt;10) ^ (1 | row&lt;&lt;1)</code> and count the ones. Jagged rows are bad.</dd>
+<dt>tslot</dt><dd>the interesting one. The evaluator runs pattern matchers for T-spin setups: an open slot with a lip on one side, a TST twist shape, a "fin". If it finds one it simulates cutting the T out and scores how many lines that would clear, using <code>tslot[lines]</code>. It repeats this up to as many T pieces as it expects soon, judged from the bag and the hold slot. This is why the bot builds T-spin slots on purpose before a T arrives.</dd>
+<dt>back_to_back</dt><dd>a bonus for currently holding back-to-back status, since the next Tetris or spin will send more.</dd>
+</dl>
+
+<h4>Reward features (what the placement did)</h4>
+<dl class="kv">
+<dt>clear1..clear4</dt><dd>reward per clear size. Singles and doubles are negative in versus play: they spend stack for little attack.</dd>
+<dt>tspin1..3, mini_tspin1..2</dt><dd>T-spin rewards. Minis are penalised because they waste the T.</dd>
+<dt>b2b_clear</dt><dd>bonus when a clear keeps a back-to-back chain alive</dd>
+<dt>combo_garbage</dt><dd>weight times the garbage the combo actually sends, from a lookup table</dd>
+<dt>wasted_t</dt><dd>a T piece placed without spinning</dd>
+<dt>move_time</dt><dd>a small penalty per input, plus 40 for any clear, standing in for the line-clear animation delay</dd>
+<dt>jeopardy</dt><dd>scaled by height above row 10 and by move time when <code>timed_jeopardy</code> is on: a tall stack is more dangerous when the move is slow and garbage is coming</dd>
+<dt>perfect_clear</dt><dd>+999, rarely reachable but decisive when it is</dd>
+</dl>
+<p>The attack table these rewards chase is the guideline one: a double sends 1 line, a triple 2, a Tetris 4, a T-spin single 2, T-spin double 4, T-spin triple 6, plus back-to-back bonuses and combo garbage. A T-spin double sends as much as a Tetris while using two lines instead of four. That single fact explains most of the bot's style.</p>
+
+<div class="note"><p><strong>Where incoming garbage enters.</strong> Cold Clear's <code>pick_move</code> takes the sorted list of candidate moves and, when we tell it garbage is incoming, skips any move whose middle columns plus the incoming lines would exceed row 20. If no move is safe, it falls back to the one with the largest attack spike, hoping to cancel. That is the <code>incoming</code> number our loop now passes from the garbage meter.</p></div>
+
+<h3 id="cc-search">1.4 The search</h3>
+<p>Evaluating a single placement is not enough. A placement that looks slightly worse now can set up a Tetris two pieces later. So the bot searches: it builds a graph of futures over the known queue and keeps improving it until asked for an answer. The file that does this is <code>bot/src/dag.rs</code>, and its own header comment calls it "by far the most complicated file in Cold Clear".</p>
+<figure>
+<svg viewBox="0 0 680 250" role="img" aria-label="Generations of the search DAG: root board, then a layer per queue piece, then speculated layers">
+  <text class="lbl" x="10" y="20">generation 0 · current board</text>
+  <text class="lbl" x="10" y="90">generation 1 · next piece known (T)</text>
+  <text class="lbl" x="10" y="160">generation 2 · known (S)</text>
+  <text class="lbl" x="10" y="230">generation 3 · speculated: one child set per possible bag piece</text>
+  <g stroke="var(--ink-3)" stroke-width="1.2" fill="none">
+    <path d="M340 42 L260 78"/><path d="M340 42 L340 78"/><path d="M340 42 L420 78"/>
+    <path d="M260 112 L230 148"/><path d="M260 112 L300 148"/><path d="M340 112 L300 148"/><path d="M420 112 L390 148"/><path d="M420 112 L460 148"/>
+    <path d="M300 182 L270 218"/><path d="M300 182 L300 218"/><path d="M300 182 L330 218"/>
+  </g>
+  <circle cx="340" cy="34" r="9" fill="var(--accent)"/>
+  <g fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.4">
+    <circle cx="260" cy="95" r="9"/><circle cx="340" cy="95" r="9"/><circle cx="420" cy="95" r="9"/>
+    <circle cx="230" cy="165" r="9"/><circle cx="300" cy="165" r="9"/><circle cx="390" cy="165" r="9"/><circle cx="460" cy="165" r="9"/>
+  </g>
+  <g fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="3 2">
+    <circle cx="270" cy="230" r="9"/><circle cx="300" cy="230" r="9"/><circle cx="330" cy="230" r="9"/>
+  </g>
+  <text x="520" y="170">← two parents, one node</text>
+  <text x="352" y="238">I  O  L …</text>
+</svg>
+<figcaption>Nodes are boards. Each generation is "after placing one more piece". Two different placement orders that produce the same board share one node, which is what makes this a DAG rather than a tree.</figcaption>
+</figure>
+
+<h4>Generations and deduplication</h4>
+<p>Nodes are grouped into generations, one per piece placed. Generation 0 is the current board. Generation 1 holds every board reachable by placing the next piece, or the hold piece instead. When two paths reach the same board, they share a node. "Same" is decided by a <code>SimplifiedBoard</code> key: the filled rows, back-to-back status, combo, which pieces remain in the bag, and which piece is in reserve. Merging these transpositions is a large saving, because Tetris is full of them: place A then B, or B then A, often leaves the same stack.</p>
+
+<h4>Selection: the Monte Carlo part</h4>
+<p>A think cycle starts at the root and walks down to a leaf, choosing a child at each node. The choice is random but biased. At every node the children are already sorted best to worst, and each child gets a weight</p>
+<pre><code>weight = (child_value − worst_value + 10)²  /  (rank² + 1)</code></pre>
+<p>then one is sampled in proportion. Better children are picked far more often, but a mediocre child still gets visited now and then, so the search does not tunnel on its first guess. When it hits a speculated node, where the next piece is unknown, it picks one of the possible bag pieces uniformly and continues into that branch. The leaf is marked so no other thread expands it at the same time.</p>
+
+<h4>Expansion</h4>
+<p>A worker thread takes the marked leaf and expands it: it runs <code>find_moves</code> for the next piece and again for the hold piece, evaluates every resulting board, and hands back a list of children. If the next piece is unknown but speculation is on, it does this once per piece still possible in the bag and stores the groups separately. The default bot in our loop does this on 2 threads.</p>
+
+<h4>Backpropagation</h4>
+<p>New children change the value of their parent, and that change travels up. A node's value becomes the best of its children's <em>value + reward</em>. For a speculated node it is the average over the possible pieces, since each is equally likely. Nodes that lead only to death (no legal placement) are dropped, and a death evaluation is a flat −1000. Because a node can have several parents, the update runs breadth-first up the generations and each node is refreshed once.</p>
+
+<h4>Answering</h4>
+<p>When we request a move, the bot finishes any in-flight thinks, sorts the root's children, lets <code>pick_move</code> apply the incoming-garbage filter, and returns the top candidate with its path and expected cells. Then <code>advance_move</code> deletes generation 0 and everything not under the chosen child, and the chosen child's generation becomes the new root. Nothing below is recomputed: the bot carries its tree forward, which is why it should be left alone to think between requests.</p>
+<p>Two options bound the work: <code>min_nodes</code> is the smallest tree it will answer from, <code>max_nodes</code> the point where it stops growing. We set <code>max_nodes</code> to 100,000. The <code>depth</code> in our log is how many generations deep the chosen line was verified; 8 is normal with 50 ms of thinking.</p>
+
+<h3 id="cc-async">1.5 Talking to it</h3>
+<p>The bot lives on its own thread and is driven by messages: <code>NewPiece</code>, <code>SuggestMove(incoming)</code>, <code>PlayMove</code>, and <code>Reset</code>. The C API in <code>c-api/src/lib.rs</code> wraps these, and <code>tetris99/engine/coldclear.py</code> wraps the C API with <code>ctypes</code>, Python's built-in way of calling C functions in a shared library. The binding must describe every struct field in order and size, which is why <code>CCWeights</code> in Python mirrors the C struct line for line. Get one field wrong and the numbers silently shift.</p>
+<p>The rhythm our loop uses, and the reason it matters:</p>
+<ol>
+<li>At spawn, tell the bot any newly revealed queue piece.</li>
+<li>Request a move with the incoming garbage count. Poll until it arrives.</li>
+<li>Compile and send the inputs. Predict the resulting board.</li>
+<li>Do nothing. The bot keeps thinking on its tree during the drop and clear animation.</li>
+<li>At the next spawn, compare the observed board with the prediction. If they differ, garbage arrived or something went wrong: relaunch the bot from the observed board.</li>
+</ol>
+<p>Relaunching rather than resetting is deliberate. A reset with a request in flight can hand back a move computed for the old board; a fresh launch cannot.</p>
+
+<div class="try">
+<div class="eyebrow">Try it</div>
+<pre><code># watch the bot play with the default weights, then with the "safe" set
+.venv/bin/python tools/watch.py --garbage-every 8
+.venv/bin/python tools/watch.py --weights config/weights_safe.json
+
+# more thinking → deeper lines. Compare the "depth" column.
+.venv/bin/python -m tetris99.loop --source synthetic --think 5
+.venv/bin/python -m tetris99.loop --source synthetic --think 200</code></pre>
+</div>
+
+<!-- ===================================================== CHAPTER 2 -->
+<h2 id="controller">2 · The controller</h2>
+<p>The Switch will only listen to controllers it recognises. We are not breaking any of that. We are building a device that is, in every way the Switch can observe, a licensed wired gamepad. To see why that works you need a little of how USB introduces devices to hosts.</p>
+
+<h3 id="usb">2.1 How USB devices introduce themselves</h3>
+<p>USB is strictly host and device. The host (here, the Switch) asks, the device answers. When you plug something in, the host runs <em>enumeration</em>: it reads a series of descriptors from the device, which are small binary tables that say what the device is.</p>
+<ul>
+<li>The <strong>device descriptor</strong> carries a 16-bit vendor ID and product ID, plus string indexes for the manufacturer and product name. Vendor IDs are assigned to companies; HORI's is <code>0x0F0D</code>.</li>
+<li>The <strong>configuration and interface descriptors</strong> say what kind of device it is. Class 3 means HID, the Human Interface Device class that covers keyboards, mice, and gamepads.</li>
+<li>The <strong>HID report descriptor</strong> is a tiny program that describes the layout of the data packets the device will send: how many buttons, how many axes, how many bits each.</li>
+</ul>
+<p>After enumeration the host polls the device on a fixed interval, typically every 8 ms for a gamepad, and the device answers each poll with one <em>input report</em> in the layout it declared. That is the entire protocol for a simple gamepad. There is no session, no authentication, no encryption, just descriptors and then a stream of reports.</p>
+
+<h3 id="hid">2.2 The 8-byte report</h3>
+<p>Here is the report descriptor the firmware library declares, decoded. It comes from <code>SwitchControlLibrary.cpp</code> and it is the same layout the real HORI Pokken pad uses.</p>
+<figure>
+<svg viewBox="0 0 680 120" role="img" aria-label="Byte layout of the 8-byte gamepad report">
+  <g font-family="IBM Plex Mono" font-size="12">
+    <rect x="10" y="30" width="150" height="40" fill="var(--accent-soft)" stroke="var(--accent)"/><text class="lbl" x="85" y="48" text-anchor="middle">bytes 0–1</text><text x="85" y="63" text-anchor="middle">16 button bits</text>
+    <rect x="160" y="30" width="80" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="200" y="48" text-anchor="middle">byte 2</text><text x="200" y="63" text-anchor="middle">hat ·4b· pad</text>
+    <rect x="240" y="30" width="80" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="280" y="48" text-anchor="middle">byte 3</text><text x="280" y="63" text-anchor="middle">left X</text>
+    <rect x="320" y="30" width="80" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="360" y="48" text-anchor="middle">byte 4</text><text x="360" y="63" text-anchor="middle">left Y</text>
+    <rect x="400" y="30" width="80" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="440" y="48" text-anchor="middle">byte 5</text><text x="440" y="63" text-anchor="middle">right X</text>
+    <rect x="480" y="30" width="80" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="520" y="48" text-anchor="middle">byte 6</text><text x="520" y="63" text-anchor="middle">right Y</text>
+    <rect x="560" y="30" width="110" height="40" fill="var(--surface)" stroke="var(--line)"/><text class="lbl" x="615" y="48" text-anchor="middle">byte 7</text><text x="615" y="63" text-anchor="middle">vendor</text>
+    <text x="10" y="98">Y=bit0  B=bit1  A=bit2  X=bit3  L=4  R=5  ZL=6  ZR=7  −=8  +=9  LS=10  RS=11  Home=12  Capture=13</text>
+  </g>
+</svg>
+<figcaption>Eight bytes, sent every poll. A held button is a 1 bit that stays set across reports; a tap is a 1 that appears for a few reports and goes back to 0.</figcaption>
+</figure>
+<p>The descriptor's own words, for the buttons part: <code>USAGE_PAGE (Button)</code>, <code>USAGE_MINIMUM (1)</code>, <code>USAGE_MAXIMUM (16)</code>, <code>REPORT_SIZE (1)</code>, <code>REPORT_COUNT (16)</code>, <code>INPUT (Data,Var,Abs)</code>. Read it as: sixteen one-bit variables, each an absolute button state. The hat switch is one four-bit value from 0 to 7 for the eight directions, 8 for centred, with <code>UNIT (degrees)</code> and a physical range of 0 to 315 so the host can interpret it as an angle. The sticks are four bytes, 0 to 255, with 128 as centre. We never move the sticks; the d-pad is the hat.</p>
+<p>The bit order in that table is exactly the <code>Button</code> flags enum in <code>tetris99/control/protocol.py</code>, which is why our PC-side code can hand the Arduino a raw mask.</p>
+
+<h3 id="why">2.3 Why the Switch believes it</h3>
+<p>The Switch keeps a list of USB controllers it accepts, keyed on vendor and product ID. Licensed third-party wired pads, including the HORI Pokken Tournament Pro Pad (<code>0x0F0D</code> / <code>0x0092</code>), are on it. Those pads are plain HID gamepads. Nintendo's own Pro Controller, by contrast, speaks a proprietary protocol with a handshake, and Joy-Cons pair over Bluetooth with their own exchange. So the trick is not to impersonate a Pro Controller; it is to present the identity of a device that was designed to be simple.</p>
+<p>Three things have to line up, and the firmware README walks through each:</p>
+<ol>
+<li><strong>Identity.</strong> The Arduino core builds the device descriptor from <code>boards.txt</code>. Editing the VID, PID, manufacturer, and product strings there makes the compiled sketch enumerate as "HORI CO.,LTD. POKKEN CONTROLLER".</li>
+<li><strong>Interface.</strong> The library registers an HID interface with the report descriptor above through the Arduino core's PluggableUSB mechanism, so the sketch does not have to write USB code.</li>
+<li><strong>Behaviour.</strong> The sketch answers polls with sensible reports: sticks centred, hat at 8, buttons 0, from the moment it boots.</li>
+</ol>
+<p>The Switch also has a setting, Pro Controller Wired Communication, that gates USB controllers entirely. It must be on.</p>
+<p>The hardware requirement follows from all this. The chip must have USB device hardware that firmware controls. The ATmega32U4 in a Pro Micro or Leonardo does. An Uno's USB is a separate chip that only ever presents a serial port, which is why it cannot do this.</p>
+
+<h3 id="serial">2.4 PC to Arduino</h3>
+<p>The Arduino's USB port is busy being a gamepad for the Switch, so the PC talks to it over a second link: the chip's hardware UART on pins TX and RX, wired to a USB-to-TTL adapter on the PC side. Three wires: TX to RX, RX to TX, ground to ground. On Linux the adapter appears as <code>/dev/ttyUSB0</code> and <code>pyserial</code> opens it like a file.</p>
+<figure>
+<svg viewBox="0 0 680 130" role="img" aria-label="Wiring: PC to USB-TTL adapter to Pro Micro to Switch dock">
+  <rect class="box" x="10" y="40" width="110" height="50" rx="6"/><text class="lbl" x="65" y="62" text-anchor="middle">PC</text><text x="65" y="78" text-anchor="middle">/dev/ttyUSB0</text>
+  <rect class="box" x="180" y="40" width="120" height="50" rx="6"/><text class="lbl" x="240" y="62" text-anchor="middle">USB‑TTL</text><text x="240" y="78" text-anchor="middle">CP2102</text>
+  <rect class="box" x="370" y="40" width="130" height="50" rx="6"/><text class="lbl" x="435" y="62" text-anchor="middle">Pro Micro</text><text x="435" y="78" text-anchor="middle">Serial1 · USB HID</text>
+  <rect class="box" x="560" y="40" width="110" height="50" rx="6"/><text class="lbl" x="615" y="62" text-anchor="middle">Switch dock</text><text x="615" y="78" text-anchor="middle">USB‑A</text>
+  <path class="arrow" d="M120 65 H178"/><text x="149" y="55" text-anchor="middle">USB</text>
+  <path class="arrow" d="M300 65 H368"/><text x="334" y="55" text-anchor="middle">TX RX GND</text>
+  <path class="arrow" d="M500 65 H558"/><text x="529" y="55" text-anchor="middle">USB</text>
+  <text x="340" y="118" text-anchor="middle">power comes from the dock; do not connect the adapter's VCC</text>
+</svg>
+</figure>
+<p>The protocol on that wire is three bytes per command: an opcode and a 16-bit argument. <code>SET</code> replaces the held button mask. <code>PRESS</code> holds a mask for a fixed press length and releases it. <code>HAT</code> sets the d-pad. <code>WAIT</code> delays the next queued command by N milliseconds. <code>RELEASE</code> lets go of everything. <code>PING</code> gets a one-byte echo, which the loop uses on startup to confirm the board is alive.</p>
+<p>The Arduino keeps a queue of these and executes them with its own millisecond clock. That is a design choice worth understanding: serial delivery from a PC has jitter of a few milliseconds, and the operating system can pause a Python process for longer. If the PC did the timing, a "hold left for 300 ms" could become 280 or 340. If the Arduino does it, it is 300. The PC sends the whole action list for a piece in one burst and gets on with reading frames.</p>
+
+<h3 id="timing">2.5 Timing and DAS</h3>
+<p>The game samples inputs once per frame at 60 Hz, so anything shorter than one frame, 16.7 ms, can be missed. Our tap is 34 ms, about two frames, with a 34 ms gap so two taps in a row are seen as two.</p>
+<p>Holding a direction does something different from tapping it. After a delay, called DAS for delayed auto-shift, the game starts moving the piece repeatedly at a fixed rate, called ARR. Tetris 99 fixes both; you cannot tune them in settings. The executor exploits this: a run of two or more moves in the same direction that ends against a wall or the stack becomes a single hold long enough to reach it. One input, and the piece arrives at the wall regardless of how many cells that was. The <code>DAS_MS</code> constant is the hold length; we measure the real DAS and ARR once the hardware is here and set it with margin.</p>
+<p>Every placement is at most: hold, one or two rotations, a horizontal move or DAS, optionally a soft drop and one more move for a spin, then hard drop. Five or six inputs, well under half a second, which leaves the bot most of the piece time to think.</p>
+
+<div class="try">
+<div class="eyebrow">Try it</div>
+<pre><code># the exact bytes the PC would send for each command
+.venv/bin/python -c "
+from tetris99.control.protocol import *
+print(encode(Op.PRESS, Button.A).hex())        # 02 04 00
+print(encode(Op.HAT, Hat.LEFT).hex())           # 03 06 00
+print(encode(Op.WAIT, 300).hex())               # 05 2c 01  (0x012c = 300)
+"</code></pre>
+</div>
+
+<!-- ===================================================== CHAPTER 3 -->
+<h2 id="vision">3 · Vision with OpenCV</h2>
+<p>OpenCV is a large library, and the bot uses a small, well-chosen slice of it: reading frames from a capture device, converting colour spaces, and drawing overlays for debugging. The rest is plain numpy. This chapter goes from a frame in memory to a spawn event in the tracker.</p>
+
+<h3 id="frame">3.1 What a frame is</h3>
+<p>A frame is a numpy array of shape <code>(1080, 1920, 3)</code> and type <code>uint8</code>: 1080 rows, 1920 columns, three bytes per pixel. The bytes are in <strong>BGR</strong> order, blue first, which is an OpenCV convention inherited from early camera drivers and a classic source of swapped-colour bugs. Indexing is <code>frame[y, x]</code>, row first, so the pixel at screen position (x=100, y=50) is <code>frame[50, 100]</code>.</p>
+<p>Size sets the design. One frame is 6.2 MB. At 60 frames a second that is 373 MB of pixels a second flowing through Python. Touching every pixel every frame is out of the question, so the vision code never does: it samples about 200 tiny patches at known positions and ignores the other 99.9 percent of the image. Slicing a numpy array, <code>frame[y-3:y+4, x-3:x+4]</code>, creates a view, not a copy, so even that costs almost nothing.</p>
+
+<h3 id="capture">3.2 Getting frames in</h3>
+<p>On Linux a capture card is a V4L2 device, <code>/dev/videoN</code>. <code>cv2.VideoCapture(N, cv2.CAP_V4L2)</code> opens it and <code>read()</code> returns the next decoded frame. Two settings in <code>capture.py</code> matter.</p>
+<ul>
+<li><strong>MJPG.</strong> USB 2 carries about 480 megabits a second. Raw 1080p60 is over 2,000. So the cheap cards compress each frame to JPEG on the way out, and OpenCV decodes it on the way in. Asking for the MJPG pixel format is what makes 1080p60 possible; the alternative YUYV format tops out around 5 frames a second at this resolution.</li>
+<li><strong>Buffer size 1.</strong> Drivers queue frames. If we fall behind, we want the newest frame, not the one from 100 ms ago. A one-frame buffer keeps latency at the floor.</li>
+</ul>
+<p>Latency from screen to array is roughly 30 to 60 ms with these cards, then a millisecond or two of our processing. Add the Arduino path and the loop reacts to a spawn in well under 100 ms.</p>
+
+<h3 id="hsv">3.3 Colour and HSV</h3>
+<p>BGR is how pixels arrive, but it is a poor space for asking "is this purple". Brightness is spread across all three channels, so the same purple at two brightness levels is two very different triples. <strong>HSV</strong> separates the questions:</p>
+<dl class="kv">
+<dt>H · hue</dt><dd>which colour, as an angle round the colour wheel. OpenCV stores it as 0 to 179, half a degree per step, so it fits in a byte. Red sits at 0 and wraps round to 179, which is why red needs two ranges.</dd>
+<dt>S · saturation</dt><dd>how vivid, 0 grey to 255 pure. Garbage blocks are grey: bright but unsaturated.</dd>
+<dt>V · value</dt><dd>how bright, 0 black to 255. Empty cells are dark. The ghost piece is the right hue but dim.</dd>
+</dl>
+<p><code>cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)</code> converts a patch. Then <code>classify_patch</code> takes the <em>median</em> of each channel over the patch rather than the mean. A patch on a block edge or a highlight contains a few odd pixels; the median ignores them, the mean would be pulled off.</p>
+<figure>
+<svg viewBox="0 0 680 92" role="img" aria-label="OpenCV hue scale 0 to 179 with the seven piece ranges marked">
+  <defs><linearGradient id="hue" x1="0" x2="1"><stop offset="0" stop-color="#e0332f"/><stop offset=".08" stop-color="#f28c1a"/><stop offset=".17" stop-color="#f2c200"/><stop offset=".33" stop-color="#3cb44b"/><stop offset=".5" stop-color="#00b7c9"/><stop offset=".67" stop-color="#2f4bd6"/><stop offset=".83" stop-color="#a03fbf"/><stop offset="1" stop-color="#e0332f"/></linearGradient></defs>
+  <rect x="20" y="20" width="640" height="22" fill="url(#hue)" rx="3"/>
+  <g fill="var(--ink)">
+    <rect x="20" y="46" width="28" height="4"/><text x="34" y="66" text-anchor="middle">Z</text>
+    <rect x="52" y="46" width="43" height="4"/><text x="73" y="66" text-anchor="middle">L</text>
+    <rect x="98" y="46" width="47" height="4"/><text x="121" y="66" text-anchor="middle">O</text>
+    <rect x="180" y="46" width="107" height="4"/><text x="233" y="66" text-anchor="middle">S</text>
+    <rect x="323" y="46" width="53" height="4"/><text x="349" y="66" text-anchor="middle">I</text>
+    <rect x="393" y="46" width="72" height="4"/><text x="429" y="66" text-anchor="middle">J</text>
+    <rect x="482" y="46" width="89" height="4"/><text x="526" y="66" text-anchor="middle">T</text>
+    <rect x="625" y="46" width="35" height="4"/><text x="642" y="66" text-anchor="middle">Z</text>
+  </g>
+  <text x="20" y="86">0</text><text x="340" y="86" text-anchor="middle">90</text><text x="660" y="86" text-anchor="end">179</text>
+</svg>
+<figcaption>The hue ranges in <code>vision/cells.py</code>. Gaps between ranges are deliberate: a hue that lands in a gap is classified empty rather than guessed. The ranges are starting points until real frames confirm them.</figcaption>
+</figure>
+<p>The decision order in <code>classify_patch</code> is: dark means empty; bright but grey means garbage; otherwise find the hue range; if the hue matches but the value is low, it is the ghost. The order matters because a grey cell has a meaningless hue, so saturation must be checked before hue is trusted.</p>
+
+<h3 id="cells">3.4 Cells to symbols</h3>
+<p>The screen layout is fixed at 1080p, so there is no perspective to correct: the board is a rectangle at known pixel coordinates and cell <code>(row, col)</code> has its centre at <code>x = board.x + (col + 0.5) · cell_w</code>. <code>Layout</code> holds these rectangles and the calibration tool lets you click them once. Had we used a camera, this is where a homography would go: a 3×3 matrix mapping the tilted quadrilateral of the screen back to a rectangle. The capture card removes the need.</p>
+<p><code>read_frame</code> produces a <code>FrameState</code>: a 20×10 grid of <code>Cell</code> symbols, the hold piece, the six queue pieces, and the garbage meter. The hold and queue boxes are identified differently from cells: the reader scans a grid of patches across each box and takes the most common piece colour, since the piece shape inside the box varies but its colour does not.</p>
+<p>The garbage meter reader walks up the bar one cell height at a time from the bottom, classifying each patch as empty, yellow, or red, and stops at the first empty slot. Yellow segments are announced lines, red ones are committed and land at the next lock.</p>
+
+<h3 id="tracker">3.5 Symbols to game state</h3>
+<p>A frame state is a snapshot with no memory. The tracker adds memory and turns snapshots into events. Its central observation about Tetris 99 is that <strong>the next queue redraws at the exact frame a piece spawns</strong>, and the spawned piece is whatever just left the front of the queue. Detecting a queue shift is far more reliable than detecting the piece itself, which may be partly above the visible rows and can touch same-coloured cells in the stack.</p>
+<p>At a confirmed spawn the tracker rebuilds the locked board from the frame. Line clears and incoming garbage have all resolved by then, so the visible cells are the stack plus the new piece parked near the top. If the loop predicted the board, and the frame agrees with the prediction, the leftover cells are the piece. If not, a small flood fill finds the same-coloured group in the spawn zone. Between spawns, the active piece is simply visible cells minus locked cells.</p>
+<p>Two forms of noise are handled explicitly.</p>
+<ul>
+<li><strong>Debouncing.</strong> A changed queue or hold reading must be seen on two consecutive frames before it counts. A single frame with a compression artefact or a mid-redraw box does not trigger anything.</li>
+<li><strong>Our own hold press.</strong> After the bot holds, the game shows a new piece and the tracker sees a spawn. The player recognises that event as the one it caused and does not decide twice.</li>
+</ul>
+<p>Hold has two visible signatures. A swap with a full slot changes the hold box and leaves the queue alone. A hold into an empty slot changes the hold box and shifts the queue by two. Both are recognised and both yield the right spawned piece and the right list of newly revealed queue pieces, which the loop forwards to Cold Clear.</p>
+
+<h3 id="loop">3.6 Closing the loop</h3>
+<p>After each placement the player computes the board it expects: locked board plus the piece's final cells, lines cleared. At the next spawn the tracker's rebuilt board is compared with it. Equal means the presses did what the engine and Cold Clear agreed they would. Different means garbage rose, or an input was missed, or the piece kicked somewhere unexpected. Either way the response is the same: trust the screen, relaunch the bot from what is actually there, and carry on. This is the whole reason for reading the screen rather than blindly trusting the engine: every piece is a checkpoint, and no error can accumulate past one piece.</p>
+<p>The same comparison runs offline. The fake Switch in <code>sim_env.py</code> renders frame states from the engine's own board, interprets the button presses independently of the executor, and the pipeline test asserts at every step that the tracker's view equals the ground truth. When the capture card arrives, the only new variable is pixels; the logic above has already been exercised end to end.</p>
+
+<div class="try">
+<div class="eyebrow">Try it</div>
+<pre><code># classify a hand-made purple patch and a black patch
+.venv/bin/python -c "
+import numpy as np
+from tetris99.vision.cells import classify_patch
+print(classify_patch(np.full((7,7,3),(200,40,160),np.uint8)))   # BGR purple → T
+print(classify_patch(np.zeros((7,7,3),np.uint8)))              # → EMPTY
+"
+
+# step the tracker through spawn, hold, garbage with synthetic frames
+.venv/bin/pytest tests/test_tracker.py -v
+
+# webcam preview: same code path the capture card will use
+.venv/bin/python tools/preview.py --device 4</code></pre>
+</div>
+
+<h2 id="glossary">Glossary</h2>
+<dl class="glossary">
+<dt>ARR</dt><dd>Auto repeat rate. Once DAS has kicked in, how often the piece moves one more cell while the direction is held.</dd>
+<dt>Back-to-back (B2B)</dt><dd>Consecutive "difficult" clears, Tetrises and T-spins, with no ordinary clear in between. Each one after the first sends extra garbage.</dd>
+<dt>Bitboard</dt><dd>Storing each board row as an integer where bit <code>x</code> is column <code>x</code>. Makes fit tests and line clears integer operations.</dd>
+<dt>Cavity / overhang / covered cell</dt><dd>Cold Clear's three kinds of hole damage: a sealed hole, a hole open from the side, and a filled cell that sits on top of a hole.</dd>
+<dt>ctypes</dt><dd>Python's standard library for loading a shared library and calling its C functions with declared argument and struct types.</dd>
+<dt>DAG</dt><dd>Directed acyclic graph. Cold Clear's search structure, a tree where identical boards reached by different orders share one node.</dd>
+<dt>DAS</dt><dd>Delayed auto-shift. Hold a direction and, after a delay, the piece keeps moving on its own until it hits something.</dd>
+<dt>Descriptor</dt><dd>A binary table a USB device hands the host during enumeration describing what it is: identity, interfaces, and for HID, the report layout.</dd>
+<dt>Enumeration</dt><dd>The sequence of descriptor reads a USB host performs when a device is plugged in.</dd>
+<dt>Generation</dt><dd>One layer of Cold Clear's DAG: all the boards reachable after placing a given number of pieces.</dd>
+<dt>Ghost piece</dt><dd>The dim outline showing where the current piece would land if hard-dropped.</dd>
+<dt>HID</dt><dd>Human Interface Device, USB class 3. Keyboards, mice, gamepads. Defined by a report descriptor plus a stream of fixed-layout reports.</dd>
+<dt>HSV</dt><dd>Hue, saturation, value. A colour space that separates "which colour" from "how vivid" and "how bright".</dd>
+<dt>Kick</dt><dd>One of the alternative offsets SRS tries when a rotation collides.</dd>
+<dt>MJPG</dt><dd>Motion JPEG: each frame compressed as a JPEG so 1080p60 fits over USB 2.</dd>
+<dt>Monte Carlo tree search</dt><dd>Growing a search tree by repeatedly walking from the root to a leaf with randomised, value-biased choices, expanding the leaf, and propagating scores back up.</dd>
+<dt>Sonic drop / soft drop</dt><dd>Moving the piece straight down to the floor without locking it, so it can still move or rotate. Hard drop locks immediately.</dd>
+<dt>Speculation</dt><dd>Searching past the known queue by branching on every piece the 7-bag could still produce and averaging.</dd>
+<dt>SRS</dt><dd>Super Rotation System, the rotation and kick rules used by guideline Tetris games including Tetris 99.</dd>
+<dt>T-spin</dt><dd>Rotating a T piece into a slot it could not drop into, then clearing lines with it. Sends as much garbage as a Tetris for a double.</dd>
+<dt>Transposition</dt><dd>Reaching the same position by different move orders. Merging them is what makes Cold Clear's graph a DAG.</dd>
+<dt>V4L2</dt><dd>Video for Linux 2, the kernel interface capture cards and webcams expose as <code>/dev/videoN</code>.</dd>
+<dt>VID / PID</dt><dd>USB vendor and product identifiers, 16 bits each, the primary way a host recognises a device model.</dd>
+<dt>Well</dt><dd>A deliberately kept empty column, usually one, that an I piece or a T-spin fills for a large clear.</dd>
+<dt>7-bag</dt><dd>The randomiser every guideline game uses: the seven pieces are shuffled and dealt, then shuffled again. You never wait more than 12 pieces for an I.</dd>
+</dl>
+</main>
+</div>

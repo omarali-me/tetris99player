@@ -6,6 +6,9 @@ A bot that plays Tetris 99 on a real Switch.
 Switch dock ──HDMI──▶ capture card ──USB──▶ PC (OpenCV → state → engine) ──serial──▶ Arduino ──USB──▶ Switch
 ```
 
+## Learning
+`docs/field-guide.html` explains Cold Clear's internals, the USB controller emulation, and the vision pipeline. Open it in a browser.
+
 ## Layout
 - `tetris99/capture.py` – frame source (capture card or recorded video)
 - `tetris99/vision/` – cell color classification, board/hold/queue extraction
