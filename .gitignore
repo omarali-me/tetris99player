@@ -6,3 +6,4 @@ config/layout.json
 .pytest_cache/
 third_party/
 config/keymap.json
+tools/bin/

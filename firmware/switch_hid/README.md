@@ -1,28 +1,34 @@
 # Switch controller firmware
 
-Presents the Arduino as a HORI Pokken Tournament Pro Pad, which the Switch accepts as a wired controller.
+Presents an ATmega32U4 board (Arduino Leonardo, Micro, Pro Micro) as a HORI Pokken Tournament Pro
+Pad, which the Switch accepts as a wired controller. No external Arduino library is needed: the
+sketch subclasses the core's HID class and appends the pad's report descriptor.
 
-## Hardware
-Any ATmega32U4 board: Arduino Leonardo, Pro Micro, Micro. The Uno will not work (its USB chip is not programmable from a sketch).
+## Build and flash
+```
+tools/flash.sh /dev/ttyACM0
+```
+This uses `tools/bin/arduino-cli` with the `arduino:avr` core and passes the identity as build
+properties (VID 0x0F0D, PID 0x0092, "HORI CO.,LTD." / "POKKEN CONTROLLER"), so `boards.txt` is not
+edited. One-time setup:
+```
+curl -fsSL https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz | tar -xz -C tools/bin arduino-cli
+tools/bin/arduino-cli core update-index && tools/bin/arduino-cli core install arduino:avr
+```
+Serial permissions: a udev rule giving mode 0666 to tty devices of vendors 2341 (Arduino
+bootloader), 0f0d (the flashed board) and 10c4 (CP2102) survives the re-enumeration that happens
+during flashing; a one-off chmod does not.
 
-## Setup
-1. Install the Arduino IDE (or `arduino-cli`).
-2. Install [SwitchControlLibrary](https://github.com/celclow/SwitchControlLibrary) into `~/Arduino/libraries`.
-3. Patch `boards.txt` for your board so the USB identity is the HORI pad:
-   ```
-   leonardo.build.vid=0x0f0d
-   leonardo.build.pid=0x0092
-   leonardo.build.usb_product="POKKEN CONTROLLER"
-   leonardo.build.usb_manufacturer="HORI CO.,LTD."
-   ```
-   (The library README has the exact lines for each board.)
-4. Flash `switch_hid.ino`.
-5. On the Switch: System Settings → Controllers and Sensors → enable **Pro Controller Wired Communication**.
-6. Plug the Arduino into the dock's USB port. Serial to the PC goes over the same cable, so the PC must be
-   between the board and the dock: use a USB hub, or a Pro Micro with a second serial link. Simplest
-   reliable setup is a board with two USB ports (Teensy 4.x with a USB host shield, or an Arduino Leonardo
-   for the Switch plus a cheap USB-serial adapter on its hardware `Serial1` pins wired to the PC).
+## Talking to it
+Commands (3 bytes, see `tetris99/control/protocol.py`) are accepted on both serial ports:
+- `Serial` (USB CDC): when the board is plugged into the PC, for bench tests. It appears as
+  `/dev/ttyACM0` and as a joystick under `/dev/input/by-id/`.
+- `Serial1` (pins TX/RX): when the board's USB is plugged into the Switch dock. Wire a USB-TTL
+  adapter: adapter TX -> board RX, adapter RX -> board TX, GND -> GND. Do not connect VCC.
 
-Note on step 6: the sketch uses `Serial` (USB CDC). When the board is plugged into the Switch that CDC port is
-not reachable from the PC. For the real setup, change `Serial` to `Serial1` in the sketch and connect a
-USB-to-TTL adapter to pins TX/RX; the PC then talks on that adapter's `/dev/ttyUSB0`.
+On the Switch enable System Settings -> Controllers and Sensors -> Pro Controller Wired Communication.
+
+## Recovery
+The bootloader is untouched and still identifies as Arduino. If a bad sketch ever breaks the USB
+serial port, double-tap the reset button: the board stays in the bootloader for 8 seconds and
+`tools/flash.sh` can upload during that window.

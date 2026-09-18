@@ -61,4 +61,5 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 - [x] Cold Clear integration and offline simulator
 - [x] input executor: Cold Clear movements -> presses with DAS, replay-verified
 - [x] main loop with dry-run and synthetic modes (`python -m tetris99.loop --source synthetic`)
-- [ ] closed loop vs CPU battle mode
+- [x] controller firmware flashed (ATmega32U4 as HORI pad, 0f0d:0092) and verified from the PC: ping, buttons, hat, sticks
+- [ ] wire the USB-TTL adapter to Serial1, plug the board into the dock, first live game
