@@ -59,9 +59,26 @@ def test_impossible_sequences_are_rejected():
     assert valid_sequence("LIIIIOO") is False          # the crash from the live run
     assert valid_sequence("IOTLJSZ") is True
     assert valid_sequence("IOTLJSZI") is True           # second bag starts
-    assert valid_sequence("IIOTLJS", hold="I") is True   # hold is outside the window rule
-    assert valid_sequence("IIOTLJI") is False            # three I within 7 in the sequence itself
+    assert valid_sequence("IOTLJSZ", hold="I") is True   # the hold piece is outside the bag rule
+    assert valid_sequence("IIOTLJI") is False            # three I within 7
+    assert valid_sequence("ILIOLTS") is True             # I L / I O L T S is a legal split
+    assert valid_sequence("ILIOITS") is False            # three I would need two bag boundaries within 7 pieces
     assert valid_sequence("IOTLJS", hold="Z") is True
     assert valid_sequence("IOTXJS") is False            # not a piece
     with pytest.raises(ValueError):
         coldclear.ColdClear("IIIIOO", threads=1, max_nodes=100)
+
+
+def test_bag_boundary_and_mid_bag_launch():
+    from tetris99.engine.board import Board
+    from tetris99.engine.coldclear import bag_boundary
+    assert bag_boundary("JLTLSTZ") == 3          # J L T | L S T Z  (the queue that crashed Cold Clear live)
+    assert bag_boundary("IOTLJSZ") == 7          # could all be one bag
+    assert bag_boundary("IIOTLJS") == 1          # I | I O T L J S
+    assert bag_boundary("IIIIOOT") is None
+    # launching mid-bag with that queue must work and answer
+    import time
+    with coldclear.ColdClear("JLTLSTZ", threads=2, max_nodes=20000, board=Board(), hold="I", speculate=False) as bot:
+        time.sleep(0.3)
+        bot.request_move(0)
+        assert bot.block_move() is not None

@@ -229,7 +229,9 @@ class Player:
             self.targeting_set = True
             log.info("targeting set to %s", self.targeting)
         if self._update_strategy(stack_height(sp.locked)) and self.bot is not None:
-            self._launch(sp)          # Cold Clear cannot change weights in place; relaunch with the new set
+            self.bot.close()          # Cold Clear cannot change weights in place; it is relaunched just below
+            self.bot = None
+            self.early_requested = False
             self.expected = None
         if self.bot is None:
             self._launch(sp)

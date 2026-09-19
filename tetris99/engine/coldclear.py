@@ -181,20 +181,29 @@ class PlanStep:
                    {0: "", 1: "mini", 2: "full"}[int(p.tspin)])
 
 
+def bag_boundary(pieces: "str | list[str]") -> int | None:
+    """Where the current 7-bag ends within `pieces` (current piece first, then the queue).
+
+    Returns k such that pieces[:k] are the rest of the current bag and pieces[k:] start the next
+    one, or None when no split makes every bag duplicate-free (an impossible sequence, i.e. a
+    misread). When several k fit, the largest is returned: it assumes the fewest pieces already
+    dealt, and any consistent choice keeps Cold Clear's bag bookkeeping sound."""
+    seq = list(pieces)
+    for k in range(min(7, len(seq)), -1, -1):
+        parts = [seq[:k]] + [seq[i:i + 7] for i in range(k, len(seq), 7)]
+        if all(len(set(part)) == len(part) for part in parts):
+            return k
+    return None
+
+
 def valid_sequence(pieces: "str | list[str]", hold: str | None = None) -> bool:
-    """7-bag sanity: every entry is a piece letter, and no piece occurs more than twice within any
-    7 consecutive pieces of the sequence (7 consecutive pieces span at most two bags). The hold
-    piece only has to be a valid letter: it left the sequence earlier, so it is not bound by the
-    window. Cold Clear aborts the whole process on an impossible bag, so this is checked before
-    anything reaches it."""
+    """True when the pieces are all real and can come out of a 7-bag randomiser. The hold piece
+    only has to be a valid letter: it left the sequence earlier. Cold Clear aborts the whole
+    process on an impossible bag, so this is checked before anything reaches it."""
     seq = list(pieces)
     if any(p not in PIECES for p in seq) or (hold is not None and hold not in PIECES):
         return False
-    for i in range(len(seq)):
-        window = seq[i : i + 7]
-        if any(window.count(p) > 2 for p in set(window)):
-            return False
-    return True
+    return bag_boundary(seq) is not None
 
 
 def board_to_field(board: Board) -> C.Array:
@@ -236,8 +245,13 @@ class ColdClear:
         if board is None:
             self.bot = L.cc_launch_async(C.byref(self.opts), C.byref(self.weights), None, q, len(queue))
         else:
+            if bag_remain is None:
+                # Tell Cold Clear what is really left in the current bag. Claiming a full bag while
+                # the queue repeats a piece early contradicts itself and eventually makes it abort.
+                k = bag_boundary(queue)
+                bag_remain = queue[:k] if k else PIECES
             bag = 0
-            for p in (bag_remain if bag_remain is not None else PIECES):
+            for p in bag_remain:
                 bag |= 1 << PIECES.index(p)
             hold_c = C.c_int(PIECES.index(hold)) if hold else None
             self.bot = L.cc_launch_with_board_async(
