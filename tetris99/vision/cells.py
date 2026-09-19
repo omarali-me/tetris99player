@@ -33,7 +33,7 @@ class Cell(str, Enum):
 # (hue_lo, hue_hi) inclusive, OpenCV scale. Red wraps around.
 HUE_RANGES: dict[Cell, tuple[int, int]] = {
     Cell.I: (84, 98),    # cyan      (measured 91)
-    Cell.O: (19, 31),    # yellow    (25-26)
+    Cell.O: (19, 29),    # yellow    (25-26); the Targeting pill pulses at hue 31-33 and must stay outside
     Cell.T: (132, 150),  # purple    (140-141)
     Cell.S: (42, 60),    # green     (49-50)
     Cell.Z: (0, 5),      # red       (171, wraps; also 164-179 below)
@@ -46,6 +46,7 @@ SAT_MIN = 130           # coloured blocks are >= 190
 VAL_MIN_BLOCK = 150     # coloured but dimmer than this: ghost outline or a HUD overlay -> ignored
 GARBAGE_SAT_MAX = 60    # garbage is sat 0-5 (up to ~45 under the animated attack ray); the Targeting pill is ~100
 VAL_MIN_GARBAGE = 95    # garbage is val 111; HUD text medians stay <= ~75
+VAL_MAX_GARBAGE = 160   # ...and white HUD icons (the R-stick symbol) are far brighter
 GARBAGE_STD_MAX = 12    # garbage centres are flat (std 0); text is ~40
 GARBAGE_FLAT_FRAC = 0.55# ...or, when an animated ray crosses the cell, most pixels still sit near the median
 VAL_MAX_EMPTY = 60
@@ -66,7 +67,7 @@ def classify_patch(bgr_patch: np.ndarray) -> Cell:
     if v < VAL_MAX_EMPTY:
         return Cell.EMPTY
     if s < SAT_MIN:
-        return Cell.GARBAGE if (s <= GARBAGE_SAT_MAX and v >= VAL_MIN_GARBAGE and is_flat(hsv[..., 2], v)) else Cell.EMPTY
+        return Cell.GARBAGE if (s <= GARBAGE_SAT_MAX and VAL_MIN_GARBAGE <= v <= VAL_MAX_GARBAGE and is_flat(hsv[..., 2], v)) else Cell.EMPTY
 
     piece = Cell.EMPTY
     if h >= Z_WRAP_MIN:

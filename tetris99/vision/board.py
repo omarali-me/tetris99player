@@ -11,7 +11,7 @@ import numpy as np
 
 from ..config import BOARD_COLS, BOARD_ROWS, Layout, Rect
 from .cells import (Cell, GARBAGE_FLAT_FRAC, GARBAGE_SAT_MAX, GARBAGE_STD_MAX, HUE_RANGES, SAT_MIN,
-                    VAL_MAX_EMPTY, VAL_MIN_BLOCK, VAL_MIN_GARBAGE, Z_WRAP_MIN)
+                    VAL_MAX_EMPTY, VAL_MAX_GARBAGE, VAL_MIN_BLOCK, VAL_MIN_GARBAGE, Z_WRAP_MIN)
 from .garbage import GarbageMeter, read_garbage_meter
 
 PATCH = 3  # half-size of the sampled square around each cell center
@@ -54,7 +54,7 @@ def classify_hsv(h: np.ndarray, s: np.ndarray, v: np.ndarray, v_std: np.ndarray,
     out = np.zeros(h.shape, np.int8)
     grey = (v >= VAL_MAX_EMPTY) & (s < SAT_MIN)
     flat = (v_std <= GARBAGE_STD_MAX) | (v_flat >= GARBAGE_FLAT_FRAC)
-    out[grey & (s <= GARBAGE_SAT_MAX) & (v >= VAL_MIN_GARBAGE) & flat] = 1
+    out[grey & (s <= GARBAGE_SAT_MAX) & (v >= VAL_MIN_GARBAGE) & (v <= VAL_MAX_GARBAGE) & flat] = 1
     coloured = (v >= VAL_MAX_EMPTY) & (s >= SAT_MIN)
     idx = HUE_TABLE[h]
     known = coloured & (idx >= 0)

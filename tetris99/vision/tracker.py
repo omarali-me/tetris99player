@@ -162,8 +162,9 @@ class Tracker:
         few frames first: the lock flash and the line-clear collapse can still be on screen."""
         st = self.state
         active, locked = split_spawned(cells, spawned, self.expected_locked)
-        if st.spawns == 0:
-            locked = grounded(locked)   # first spawn: the GO! banner can read as floating blocks
+        # Locked cells must connect to the floor. Anything floating is an overlay misread: the GO!
+        # banner at the start, or the Targeting widget drawn over the top rows in battle mode.
+        locked = grounded(locked)
         if self.expected_locked is not None and locked != self.expected_locked and not final:
             return None
         garbage = self.expected_locked is not None and locked != self.expected_locked
