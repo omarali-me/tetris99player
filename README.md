@@ -64,4 +64,6 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 - [x] controller firmware flashed (ATmega32U4 as HORI pad, 0f0d:0092) and verified from the PC: ping, buttons, hat, sticks
 - [x] adapter wired, board on the dock: the Switch accepts it; timings measured (latency 116 ms, DAS 200, ARR 33, soft drop ~50 ms/row)
 - [x] first live games in 150 Line Mode: ~1.5 pieces/s, 148 pieces with 1 misplacement; soft drops are closed-loop (release on seen landing)
-- [ ] investigate the rare missed spawn (stall detector now saves a frame); play a Tetris 99 battle
+- [x] first Tetris 99 battles (2026-09-19): places 94, 83, 89, 51, 67 of ~98. Fixed along the way: the pulsing Targeting pill read as O blocks, white HUD icons read as garbage, the board lagging the truth right after a line clear (the prediction is now trusted after clearing moves), serial framing resync, paced serial writes
+- [ ] OPEN: in battle mode the final hard drop is often not registered when it directly follows a rotation (40% of such moves, ~50% of soft-drop moves, ~15% otherwise; it was 1 in 148 in 150 Line Mode). A watchdog re-sends the drop after 0.7 s, which rescues the piece but costs time. Ruled out: tap length (50 ms no better), serial RX overflow (pacing no better). Next: a controlled rotate-then-drop experiment in CPU Battle, varying the gap
+- [ ] OPEN: `garbage +N` events were never classified in battle logs although garbage arrived; check the garbage-row reading against a saved battle frame

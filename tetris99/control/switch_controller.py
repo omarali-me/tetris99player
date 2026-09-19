@@ -10,10 +10,10 @@ from .protocol import Button, Hat, Op, encode
 # Tetris 99 handling, measured with tools/measure_timing.py on 2026-09-19 (150 Line Mode, level 1):
 #   press -> visible move 116 ms; taps of 17/25/34/50 ms all register; 3 taps at 34/34 and 25/25
 #   moved 3 columns 8/8 times (17/17 dropped one in 8); DAS 200 ms, ARR 33 ms; soft drop ~50 ms/row.
-# In battle mode (99 boards on screen) 34 ms taps were lost often while they were perfect in the
-# single-player modes, consistent with input being sampled less often there. 50 ms = 3 frames.
-TAP_MS = 50
-GAP_MS = 50
+# 50/50 was tried in battle mode on 2026-09-19 and did not reduce lost inputs, so tap length is not
+# the cause; see the note on lost hard drops in README "Open issues".
+TAP_MS = 34                 # 2 frames
+GAP_MS = 34                 # 2 frames between inputs
 DAS_MS = 560                # wall to wall: 200 + 9 x 33 + margin
 SOFT_DROP_MS_PER_ROW = 55   # soft drop is 20x gravity: ~50 ms/row at level 1, faster later
 SOFT_DROP_MARGIN_MS = 150   # covers input latency; over-holding after landing is harmless
