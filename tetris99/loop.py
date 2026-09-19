@@ -158,6 +158,7 @@ class Player:
             if self.own_hold_spawn and self.own_hold_spawn == (sp.piece, board_cells(sp.locked)):
                 self.own_hold_spawn = None
                 self.tracker.expected_locked = board_cells(self.expected) if self.expected else None
+                self.tracker.trust_expected = self.last_cleared > 0 and getattr(self.output, "live", False)
                 log.debug("ignoring spawn caused by our own hold press")
                 return None
             self.own_hold_spawn = None
@@ -219,6 +220,7 @@ class Player:
         self.last_actions, self.last_kind = actions, kind
         self.expected = board
         self.tracker.expected_locked = board_cells(board)
+        self.tracker.trust_expected = self.last_cleared > 0 and getattr(self.output, "live", False)
         self.pieces += 1
         if self.trainer:
             log.info("#%d place %s%s at %s  (depth %d)", self.pieces, kind,

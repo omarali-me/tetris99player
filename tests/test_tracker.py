@@ -98,3 +98,17 @@ def test_hold_change_alone_does_not_fire_before_queue_settles():
     assert tr.update(render(board, FallingPiece.spawn("S", board), "T", list("ZJLOIT"))) is None  # 1st confirm
     ev = tr.update(render(board, FallingPiece.spawn("S", board), "T", list("ZJLOIT")))
     assert ev and ev.piece == "S" and ev.hold == "T" and ev.new_pieces == ["T"]
+
+
+def test_trust_expected_after_a_line_clear():
+    """While cleared rows are still collapsing on screen, the predicted board is used as is."""
+    tr = Tracker(confirm_frames=1)
+    board = Board()
+    tr.update(render(board, None, None, list("TSZJLO")))
+    tr.update(render(board, FallingPiece.spawn("T", board), None, list("SZJLOI")))
+    truth = Board(); truth.rows[0] = 0b0000001111          # what the board really is after the clear
+    lagging = Board(); lagging.rows[0] = 0; lagging.rows[2] = 0b0000001111   # screen: rows not collapsed yet
+    tr.expected_locked = board_cells(truth); tr.trust_expected = True
+    ev = tr.update(render(lagging, FallingPiece.spawn("S", lagging), None, list("ZJLOIT")))
+    assert ev and board_cells(ev.locked) == board_cells(truth) and not ev.garbage_arrived
+    assert tr.trust_expected is False

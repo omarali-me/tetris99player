@@ -133,6 +133,10 @@ class Tracker:
         self._pending_hold_count = 0
         self._deferred: tuple[str, list[str], int] | None = None  # (piece, new pieces, frames left)
         self.recheck_frames = 5
+        # Set by the caller when its last placement cleared lines. Tetris 99 has no line-clear delay:
+        # the next piece spawns while the rows are still visibly collapsing, so the screen lags the
+        # true board. Garbage never enters on a clearing placement, so the prediction is exact.
+        self.trust_expected = False
         self.expected_locked: set[Coord] | None = None  # set by the controller after a placement
 
     def _stable_queue(self, queue: list[str]) -> list[str] | None:
@@ -161,6 +165,14 @@ class Tracker:
         """Build the spawn event. If the locked board disagrees with the caller's prediction, wait a
         few frames first: the lock flash and the line-clear collapse can still be on screen."""
         st = self.state
+        if self.trust_expected and self.expected_locked is not None:
+            locked = set(self.expected_locked)
+            active, _ = split_spawned({c: k for c, k in cells.items() if c not in locked}, spawned, None)
+            self.expected_locked, self.trust_expected, self._deferred = None, False, None
+            st.locked, st.active, st.current = locked, active, spawned
+            st.spawns += 1
+            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), False, new_pieces,
+                         fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
         active, locked = split_spawned(cells, spawned, self.expected_locked)
         # Locked cells must connect to the floor. Anything floating is an overlay misread: the GO!
         # banner at the start, or the Targeting widget drawn over the top rows in battle mode.
