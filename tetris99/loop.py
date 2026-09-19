@@ -384,22 +384,35 @@ class Player:
 
     _busy_for = 0.0
 
-    def _watch_drop(self) -> None:
+    def _watch_drop(self, fs: FrameState) -> None:
         """Called every frame while down is held. The executor knows the row the piece must come to
         rest on, so landing is simply: the piece's lowest cell is on that row, on two frames running.
         That holds at any gravity, including speeds where the piece is already down before we look."""
         ds, now = self.drop_state, time.perf_counter()
-        active = self.tracker.state.active
+        # Find the piece in THIS frame: cells of its colour that are not part of the locked stack.
+        from .vision.cells import Cell
+        from .vision.tracker import grid_cells
+        st = self.tracker.state
+        colour = Cell(st.current) if st.current else None
+        mine = {c for c, k in grid_cells(fs.grid).items() if k is colour and c not in st.locked}
+        ds["mine_sizes"] = ds.get("mine_sizes", []) + [len(mine)]
+        active = mine if 1 <= len(mine) <= 4 else set()
         y = min((c[1] for c in active), default=None)
         if now >= ds["watch_from"] and y is not None and y == ds["land_y"]:
             ds["hits"] += 1
         else:
             ds["hits"] = 0
+        ds.setdefault("seen", []).append(y)
         timed_out = now >= ds["deadline"]
         if ds["hits"] >= 2 or timed_out:
             if timed_out:
                 self.softdrop_timeouts += 1
-                log.debug("soft drop: landing not seen; released on the timer")
+                ys = ds.get("seen", [])
+                compact = [ys[0]] + [b for a, b in zip(ys, ys[1:]) if b != a] if ys else []
+                sizes = ds.get("mine_sizes", [])
+                log.info("soft drop released on the timer: wanted row %s, piece %s lowest row went %s; cells of its colour outside the stack per frame: %s; now %s",
+                         ds["land_y"], self.tracker.state.current, compact[-8:],
+                         sorted(set(sizes)), sorted(mine)[:8])
             self.output.down(False)
             self.drop_state = None
             self._busy_for = 0.0
@@ -433,7 +446,7 @@ class Player:
                 self.output.down(False)
                 self.drop_state, self.segments = None, []
             else:
-                self._watch_drop()
+                self._watch_drop(fs)
                 return None
         return self.on_spawn(sp) if sp else None
 
@@ -629,6 +642,7 @@ def main() -> None:
     ap.add_argument("--trainer", action="store_true", help="coach: you play; press space to lay out Cold Clear's placements for all known pieces (implies --show)")
     ap.add_argument("--mode", choices=["normal", "tspin", "allclear"], default="normal", help="coach: starting mode")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
+    ap.add_argument("--save-softdrop", action="store_true", help="debug: save frames while a soft drop is being held")
     ap.add_argument("--no-softdrop", action="store_true", help="plan hard-drop-only placements (no tucks/spins): fewer failures at high gravity, less attack")
     ap.add_argument("--pace", type=float, default=0.0, help="live: minimum seconds per piece (human pace); 0 = as fast as possible")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
@@ -669,10 +683,15 @@ def main() -> None:
     t_report, n_report = t0, 0
     last_progress, last_pieces, stall_logged = t0, 0, False
     seen_divergences = 0
+    sd_saved = 0
     try:
         for frame, fs in frames:
             n += 1
             player.step(fs)
+            if frame is not None and player.drop_state is not None and args.save_softdrop and sd_saved < 45:
+                import cv2
+                sd_saved += 1
+                cv2.imwrite(f"recordings/sd_{sd_saved:03d}_{int((time.perf_counter() - t0) * 1000)}.png", frame)
             if frame is not None and player.divergences != seen_divergences:
                 seen_divergences = player.divergences
                 import cv2
