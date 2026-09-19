@@ -147,3 +147,30 @@ def test_stack_height_ignores_floating_noise():
     b.rows[10] = 1 << 7                      # a stray misread cell floating at row 10
     assert b.height() == 11 and stack_height(b) == 2
     assert stack_height(Board()) == 0
+
+
+def test_rescue_takes_over_a_falling_piece_but_not_a_locked_one():
+    import time as _t
+    from tetris99.engine.board import Board
+    from tetris99.engine.piece import FallingPiece
+    from tetris99.vision.synthetic import render
+    out = FakeLive()
+    player = Player(out, threads=1, max_nodes=3000)
+    board = Board()
+    for _ in range(3):
+        player.step(render(board, None, None, list("TSZJLO")))
+    piece = FallingPiece.spawn("T", board)
+    for _ in range(10):
+        player.step(render(board, piece, None, list("SZJLOI")))
+    assert len(out.sent) == 1                      # the normal decision for T
+    player.last_sent -= 5; player.busy_until -= 5  # pretend a long idle time has passed
+    # a piece sitting still (just locked) is NOT rescued
+    still = FallingPiece("S", 0, 4, 6)
+    for _ in range(5):
+        player.step(render(board, still, None, list("SZJLOI")))
+    assert player.rescues == 0
+    # the same piece moving down IS
+    for y in (5, 4):
+        player.step(render(board, FallingPiece("S", 0, 4, y), None, list("ZJLOIT")))
+    assert player.rescues == 1 and len(out.sent) == 2
+    player.close()

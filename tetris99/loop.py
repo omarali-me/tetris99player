@@ -131,6 +131,8 @@ class Player:
         self.busy_until = 0.0
         self.early_request = False            # ask Cold Clear as soon as a spawn is seen, while the vote runs
         self.early_requested = False          # a request is outstanding; the next poll belongs to it
+        self.rescues = 0
+        self._idle_seen: tuple[str, int, float] | None = None   # (piece, lowest row, time) first noticed while idle
         self.pending: Spawn | None = None     # a spawn waiting for its decision time (pace)
         self.decide_at = 0.0
         self.resyncs = 0
@@ -497,6 +499,39 @@ class Player:
             return None
         return next(iter(good))
 
+    def _rescue(self, fs: FrameState) -> Spawn | None:
+        """Idle with a piece visibly FALLING means an input was lost somewhere (a hold press that did
+        not register, a spawn we misjudged) and nobody is playing that piece. Falling is the test: a
+        piece that has just locked is also 'outside the known stack', but it does not move."""
+        from .vision.cells import Cell
+        from .vision.tracker import grid_cells
+        now = time.perf_counter()
+        seen = self._piece_on_screen(fs)
+        if seen is None:
+            self._idle_seen = None
+            return None
+        locked = self.tracker.state.locked
+        low = min(c[1] for c, k in grid_cells(fs.grid).items() if k is Cell(seen) and c not in locked)
+        if self._idle_seen is None or self._idle_seen[0] != seen:
+            self._idle_seen = (seen, low, now)
+            return None
+        if low >= self._idle_seen[1]:
+            return None                      # has not moved down (yet): may simply be locked
+        queue = [q.value for q in fs.queue if q is not None]
+        hold = fs.hold.value if fs.hold else None
+        if len(queue) != len(fs.queue) or not valid_sequence([seen] + queue, hold):
+            return None
+        self._idle_seen = None
+        self.rescues += 1
+        log.warning("idle while a %s is falling (an input was lost): taking over from the screen", seen)
+        st = self.tracker.state
+        st.current, st.queue, st.hold = seen, list(queue), hold
+        self.tracker.expected_locked, self.tracker.trust_expected = None, False
+        self.expected = None
+        self.drop_deadline = None
+        return Spawn(seen, to_board(locked), hold, list(queue), False, [],
+                     fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
+
     def _verified(self, sp: Spawn, fs: FrameState) -> Spawn:
         """Decide from what is on screen NOW. If the piece in play is not the one we believe, a stray
         input dropped a piece behind our back and every move would land one piece late; rebuild the
@@ -574,7 +609,18 @@ class Player:
             self.decide_at = max(time.perf_counter(), self.last_sent + self.pace_s)
         if self.pending is not None and time.perf_counter() >= self.decide_at:
             sp, self.pending = self.pending, None
+            self._idle_seen = None
             return self.on_spawn(self._verified(sp, fs))
+        # nothing to do: make sure that is really true
+        now = time.perf_counter()
+        if (self.bot is not None and self.pending is None and self.tracker._collect is None
+                and now > self.busy_until + 0.6 and now > self.last_sent + 0.9):
+            resc = self._rescue(fs)
+            if resc is not None:
+                self._launch(resc)
+                return self.on_spawn(resc)
+        else:
+            self._idle_seen = None
         return None
 
     def close(self) -> None:
