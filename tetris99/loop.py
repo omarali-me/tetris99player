@@ -822,7 +822,7 @@ def main() -> None:
     ap.add_argument("--no-survival", action="store_true", help="always use the attack weights")
     ap.add_argument("--early-request", action="store_true", help="live: ask Cold Clear as soon as a spawn is seen, in parallel with the spawn vote (~55 ms per piece)")
     ap.add_argument("--settle-frames", type=int, default=4, help="live: extra frames voted at each spawn (4 = ~83 ms; fewer is faster, less spark-proof)")
-    ap.add_argument("--tap-ms", type=int, default=34, help="live: tap and gap length in ms (34 = 2 frames; 25 is faster, less proven)")
+    ap.add_argument("--tap-ms", type=int, default=34, help="live: tap and gap length in ms (34 = 2 frames). 25 loses whole moves in battle mode; do not go below 34 there")
     ap.add_argument("--no-merge", action="store_true", help="do not press rotation and sideways taps simultaneously")
     ap.add_argument("--save-softdrop", action="store_true", help="debug: save frames while a soft drop is being held")
     ap.add_argument("--no-softdrop", action="store_true", help="plan hard-drop-only placements (no tucks/spins): fewer failures at high gravity, less attack")

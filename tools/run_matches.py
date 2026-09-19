@@ -14,7 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 OUT = ROOT / "recordings" / "matches"; OUT.mkdir(parents=True, exist_ok=True)
-MODES = {"fast": ["--early-request", "--settle-frames", "2", "--tap-ms", "25"],
+# 25 ms taps were tried in battle mode on 2026-09-19 and whole moves went missing; 34 ms is the floor.
+MODES = {"fast": ["--early-request", "--settle-frames", "2"],
          "early": ["--early-request"],
          "sd": [], "nosd": ["--no-softdrop"], "attack": ["--no-survival"], "random": ["--targeting", "none"]}
 FIRST_PRESS = {"hold": ("hold.py", ["A", "1.3"]), "tap": ("hold.py", ["A", "0.15"])}
