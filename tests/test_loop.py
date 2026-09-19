@@ -137,3 +137,13 @@ def test_targeting_is_sent_once_at_the_first_piece():
         player.step(frame)
     player.close()
     assert out.targets == ["kos"]
+
+
+def test_stack_height_ignores_floating_noise():
+    from tetris99.engine.board import Board
+    from tetris99.loop import stack_height
+    b = Board(); b.rows[0] = 0b1111; b.rows[1] = 0b0011
+    assert stack_height(b) == 2
+    b.rows[10] = 1 << 7                      # a stray misread cell floating at row 10
+    assert b.height() == 11 and stack_height(b) == 2
+    assert stack_height(Board()) == 0

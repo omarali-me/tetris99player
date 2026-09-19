@@ -24,6 +24,14 @@ from .vision.tracker import Spawn, Tracker, board_cells, to_board
 log = logging.getLogger("loop")
 
 
+def stack_height(board: Board) -> int:
+    """Height of the real stack: the tallest column among cells connected to the floor. A stray
+    misread cell floating above the stack must not count, or the strategy flips on noise."""
+    from .vision.tracker import grounded
+    cells = grounded(board_cells(board))
+    return max((y for _, y in cells), default=-1) + 1
+
+
 def garbage_rows(expected: Board, seen: Board) -> int:
     """If `seen` is `expected` pushed up by k garbage rows (each full except one hole), return k."""
     for k in range(1, 13):
@@ -211,7 +219,7 @@ class Player:
             self.output.targeting(self.targeting)
             self.targeting_set = True
             log.info("targeting set to %s", self.targeting)
-        if self._update_strategy(sp.locked.height()) and self.bot is not None:
+        if self._update_strategy(stack_height(sp.locked)) and self.bot is not None:
             self._launch(sp)          # Cold Clear cannot change weights in place; relaunch with the new set
             self.expected = None
         if self.bot is None:
