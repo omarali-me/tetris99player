@@ -87,6 +87,14 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 - [x] 2026-09-19 SPEED STUDY. `--pace` turned out not to be the limiter: 0.7, 0.4 and 0.2 all gave ~1.1 pieces/s. Per piece: ~360 ms fixed overhead (game spawn delay + capture latency ~200 ms, queue debounce 33, spawn vote 83, Cold Clear answer 55) + 68 ms per input; soft-drop moves cost ~1.6 s each and take ~25% of match time. Added: simultaneous rotate+move inputs where order provably does not matter (on by default, `--no-merge`), `--early-request` (ask Cold Clear while the spawn vote runs), `--settle-frames`, `--tap-ms`. **25 ms taps lose whole moves in battle mode** (fine in single-player): 34 ms is the floor. Result at CPU level 5 with `--pace 0 --early-request --settle-frames 2`: 1.22 pieces/s, 12% mismatches, **5th of 99**. `run_matches.py` mode `fast` = those flags; `sd@0.4` sets a per-match pace
 - [x] Rescue: when the bot is idle and a piece is visibly FALLING, it takes over from the screen. Root cause found for the recurring 3-20 s stalls: a lost hold press made the next real spawn look like "our own hold swap" and it was ignored. Long waits went from 16% of match time to 2.5%
 - [x] Cold Clear abort on a LEGAL queue (J LTLSTZ): mid-game launches claimed a full bag while the queue repeated pieces early. `bag_boundary()` now infers the real remaining bag, and doubles as the exact 7-bag validity test
+- [x] 2026-09-19 'clean' strategy (user's idea: no T-spins, clear lines, keep the board empty): `config/weights_clean.json` + hard drops only, runner mode `clean` (`cleansd` = same with soft drops). Offline it holds a slightly lower stack than the default under heavy garbage. CPU level 5: 21st. Online, alternating with `fast` (spin-hunting, same speed settings), all at ~1.3 pieces/s:
+
+  | mode | places |
+  |---|---|
+  | clean | 16, 79, 32 |
+  | fast | 10, 52, (third match void: Nintendo communication error 2306-0332 mid-game) |
+
+  No evidence that dropping T-spins helps: clean averaged 42nd, fast 31st, on 3 and 2 matches, which is noise-level. Clean had MORE board mismatches (12-14% vs 8-11%), so its stacks are not easier to read either
 - [ ] IDEA: soft-drop moves are 13% of pieces but ~25% of time; raising Cold Clear's `move_time` penalty in the attack weights would trade some spins for tempo
 - [ ] OPEN: `out of step ... resynchronising` fires ~15 times in a long match. The resync rescues it, but each one means a piece was dropped by an input the bot did not intend; find the source (suspect: hard-drop watchdog or a tap landing after a lock)
 - [ ] (superseded) soft-drop moves fail more as gravity rises ('piece locked during a soft drop' x7 in one match) and two 8-11 s stalls came right after such moves with 10 lines incoming. Try `--no-softdrop` (Cold Clear hard-drop-only mode) and compare placings
