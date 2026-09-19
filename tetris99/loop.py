@@ -95,6 +95,10 @@ class Player:
         self.own_hold_spawn: tuple[str, set] | None = None
         self.divergences = 0
         self.garbage_events = 0
+        # While the Arduino is still playing our last move, any spawn the tracker reports is a side
+        # effect of that move (the hold swap), never a fresh piece: deciding again would put every
+        # later move one piece out of step.
+        self.busy_until = 0.0
         # watchdog: when a hard drop was sent and no new piece shows up, the input was lost; re-send it
         self.drop_deadline: float | None = None
         self.drop_retries = 0
@@ -153,6 +157,16 @@ class Player:
             self.expected = None
             self.target = None
             self.plan = []
+            return None
+        if self.bot is not None and getattr(self.output, "live", False) and (
+                time.perf_counter() < self.busy_until - 0.03 or self.drop_state is not None):
+            # our own move is still being played: this is the hold swap showing up, not a new piece
+            for p in sp.new_pieces:
+                self.bot.add_next_piece(p)
+            self.own_hold_spawn = None
+            self.tracker.expected_locked = board_cells(self.expected) if self.expected else None
+            self.tracker.trust_expected = self.last_cleared > 0
+            log.debug("spawn of %s during our own move: ignored", sp.piece)
             return None
         if self.bot is None:
             self._launch(sp)
@@ -314,6 +328,7 @@ class Player:
 
     def _arm_watchdog(self, sent: list[Action]) -> None:
         if getattr(self.output, "live", False):
+            self.busy_until = time.perf_counter() + self.output.duration(sent)
             self.drop_deadline = time.perf_counter() + self.output.duration(sent) + 0.7
             self.drop_retries = 0
 
@@ -346,6 +361,7 @@ class Player:
             if seg:
                 self.output.run(seg)
                 self._busy_for = self.output.duration(seg)
+                self.busy_until = time.perf_counter() + self._busy_for
                 if not self.segments:
                     self._arm_watchdog(seg)
         self.drop_state = None
