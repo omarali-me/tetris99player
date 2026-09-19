@@ -68,6 +68,14 @@ overridden. `config/weights_safe.json` is an example that plays lower and simple
 - [x] 2026-09-19: FIRST WIN. CPU Battle (level 1), 1st of 99 with 24 K.O.s, 221 pieces in 3m15s (docs/first_win_cpu_battle.png)
 - [x] 2026-09-19: second win at CPU level 3: 1st of 99, 25 K.O.s, 307 pieces in 4m39s, no re-sent drops (docs/win_cpu_level3.png)
 - [x] 2026-09-19: third CPU win (level 3, 322 pieces) with a temporal vote over frames at each spawn and `--pace 0.7`; mismatches 14% -> 8%. First clean ONLINE result with all fixes: 58th of 98 (141 pieces, 2m33s). Earlier online results (94/83/89/51/67/93/91) were all played with at least one of: HUD phantoms, false watchdog re-sends, or the bot running one piece out of step after a misrecognised hold
+- [x] 2026-09-19 online comparison, 6 matches at `--pace 0.7`, alternating modes (tools/run_matches.py; logs and result screens in recordings/matches/):
+
+  | mode | places | mean | pieces per match | board mismatches |
+  |---|---|---|---|---|
+  | `--no-softdrop` | 42, 66, 42 | 50 | 234, 149, 230 | 8.5%, 8.7%, 8.7% |
+  | soft drops on | **12**, 71, 66 | 50 | 378, 124, 130 | 14%, 12%, 12% |
+
+  Same average, different character: hard-drop-only is steadier, soft drops (T-spins) have the higher ceiling (docs/online_12th_place.png) and the lower floor. Three matches each is far too few to separate them. Soft drops stay on by default; the thing to fix is their reliability ('piece locked during a soft drop' 9/6/3 times per match)
 - [ ] OPEN (online): soft-drop moves fail more as gravity rises ('piece locked during a soft drop' x7 in one match) and two 8-11 s stalls came right after such moves with 10 lines incoming. Try `--no-softdrop` (Cold Clear hard-drop-only mode) and compare placings
 - [ ] OPEN: ~10% small board mismatches remain in battle mode. About a third are single cells in the right-hand column (x=9), where the attack lines run along the board edge; the rest are genuine misplacements where part of a move was not applied. Garbage arrivals are still logged as DIVERGED rather than `garbage +N` (the exact-shift check never matches; check the bottom garbage rows on a saved diverge_*.png)
 - [x] RESOLVED: the 'lost hard drop after a rotation' was a misdiagnosis. A controlled experiment (tools/measure_drop.py) registered 27/27 drops at gaps down to 17 ms. The re-sends were the watchdog firing falsely while garbage rose (its animation delays the next spawn); it now re-sends only when the screen shows the piece did not land. The real damage came from vision: attack lines crossing a cell fooled the single centre sample, so cells now use a five-point vote
