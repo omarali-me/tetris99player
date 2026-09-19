@@ -31,3 +31,33 @@ def test_garbage_rows_detection():
     assert garbage_rows(exp, exp) == 0
     wrong = Board(list(seen.rows)); wrong.rows[5] |= 1 << 7     # a misplaced cell as well
     assert garbage_rows(exp, wrong) == 0
+
+
+class FakeLive:
+    """Stands in for the serial controller: records what was sent."""
+    live = True
+    def __init__(self): self.sent = []
+    def run(self, actions): self.sent.append([a.kind for a in actions])
+    def duration(self, actions): return 0.0
+    def down(self, pressed): self.sent.append(["down" if pressed else "up"])
+
+
+def test_out_of_step_is_detected_and_resynchronised_from_the_screen():
+    from tetris99.engine.board import Board
+    from tetris99.engine.piece import FallingPiece
+    from tetris99.vision.synthetic import render
+    out = FakeLive()
+    player = Player(out, threads=1, max_nodes=3000)
+    board = Board()
+    for _ in range(3):
+        player.step(render(board, None, None, list("TSZJLO")))
+    # the queue shifts as if T spawned, but the piece actually on screen is a Z:
+    # a stray input already dropped a piece and the game is one piece ahead of our belief
+    frame = render(board, FallingPiece.spawn("Z", board), None, list("SZJLOI"))
+    for _ in range(10):
+        player.step(frame)
+    player.close()
+    assert player.resyncs == 1
+    assert player.tracker.state.current == "Z"
+    assert out.sent, "a move should have been sent for the piece that is really in play"
+    assert player.target[0] in ("Z", "S")   # Z placed, or Z held and the next piece (S) placed

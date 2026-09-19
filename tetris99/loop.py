@@ -106,6 +106,9 @@ class Player:
         # effect of that move (the hold swap), never a fresh piece: deciding again would put every
         # later move one piece out of step.
         self.busy_until = 0.0
+        self.pending: Spawn | None = None     # a spawn waiting for its decision time (pace)
+        self.decide_at = 0.0
+        self.resyncs = 0
         # watchdog: when a hard drop was sent and no new piece shows up, the input was lost; re-send it
         self.drop_deadline: float | None = None
         self.drop_retries = 0
@@ -204,10 +207,6 @@ class Player:
                 (log.debug if self.trainer else log.info)("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
-        if self.pace_s and getattr(self.output, "live", False):
-            wait = self.last_sent + self.pace_s - time.perf_counter()
-            if wait > 0:
-                time.sleep(wait)     # the bot keeps searching meanwhile
         # Cold Clear's `incoming` is the garbage expected after placing this piece. Red and yellow
         # segments are close; grey ones are freshly queued and may still be cancelled by our own
         # attack, so they count half.
@@ -416,13 +415,55 @@ class Player:
             self.output.down(False)
             self.drop_state = None
             self._busy_for = 0.0
+            if timed_out and not mine:
+                # The piece is nowhere to be seen: it has locked already. Sending the rest of the
+                # move would hard-drop the NEXT piece and put every later move one piece out of step.
+                log.warning("soft drop timed out with the piece gone: abandoning the rest of the move")
+                self.segments = []
+                return
             self._advance_segments()
+
+    def _piece_on_screen(self, fs: FrameState) -> str | None:
+        """Which piece is actually in play right now: the piece colour with 2-4 cells outside the
+        locked stack. None when nothing clear is visible."""
+        from .vision.cells import Cell
+        from .vision.tracker import PIECE_CELLS, grid_cells
+        locked = self.tracker.state.locked
+        counts: dict[str, int] = {}
+        for c, k in grid_cells(fs.grid).items():
+            if k in PIECE_CELLS and c not in locked:
+                counts[k.value] = counts.get(k.value, 0) + 1
+        good = {k: n for k, n in counts.items() if 2 <= n <= 4}
+        if len(good) != 1:
+            return None
+        return next(iter(good))
+
+    def _verified(self, sp: Spawn, fs: FrameState) -> Spawn:
+        """Decide from what is on screen NOW. If the piece in play is not the one we believe, a stray
+        input dropped a piece behind our back and every move would land one piece late; rebuild the
+        situation from the screen instead."""
+        seen = self._piece_on_screen(fs)
+        if seen is None or seen == sp.piece:
+            return sp
+        queue = [q.value for q in fs.queue if q is not None]
+        hold = fs.hold.value if fs.hold else None
+        if len(queue) != len(fs.queue) or not valid_sequence([seen] + queue, hold):
+            return sp
+        self.resyncs += 1
+        log.warning("out of step: believed %s is in play but the screen shows %s; resynchronising from the screen", sp.piece, seen)
+        st = self.tracker.state
+        st.current, st.queue, st.hold = seen, list(queue), hold
+        fixed = Spawn(seen, sp.locked, hold, list(queue), False, [], sp.incoming, sp.imminent)
+        self.expected = None
+        self._launch(fixed)
+        return fixed
 
     def step(self, fs: FrameState) -> list[Action] | None:
         if self.trainer:
             self.coach_step(fs)
             return None
         sp = self.tracker.update(fs)
+        live = getattr(self.output, "live", False)
         if sp is not None:
             self.drop_deadline = None
         elif self.drop_deadline is not None and self.drop_state is None and time.perf_counter() > self.drop_deadline:
@@ -448,7 +489,16 @@ class Player:
             else:
                 self._watch_drop(fs)
                 return None
-        return self.on_spawn(sp) if sp else None
+        if not live:
+            return self.on_spawn(sp) if sp else None
+        # live: hold the decision until its pace time, then verify it against the current frame
+        if sp is not None:
+            self.pending = sp
+            self.decide_at = max(time.perf_counter(), self.last_sent + self.pace_s)
+        if self.pending is not None and time.perf_counter() >= self.decide_at:
+            sp, self.pending = self.pending, None
+            return self.on_spawn(self._verified(sp, fs))
+        return None
 
     def close(self) -> None:
         if self.bot:
