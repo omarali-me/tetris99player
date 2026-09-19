@@ -83,3 +83,25 @@ def test_soft_drop_landing_watches_the_held_piece_after_a_hold():
     assert player.drop_state is None, "landing of the held piece was not recognised"
     assert ["up"] in out.sent
     player.close()
+
+
+def test_own_hold_spawn_during_a_soft_drop_is_not_treated_as_a_lock():
+    from tetris99.engine.board import Board
+    from tetris99.engine.piece import FallingPiece
+    from tetris99.vision.synthetic import render
+    from tetris99.vision.tracker import Spawn
+    out = FakeLive()
+    player = Player(out, threads=1, max_nodes=3000)
+    board = Board()
+    player.target = ("S", [(3, 0), (4, 0), (4, 1), (5, 1)], True)     # hold first, then place S
+    player.drop_state = {"watch_from": 0.0, "deadline": 1e18, "land_y": 0, "hits": 0}
+    player.segments = [[]]
+    # make the tracker report the swapped-in S as a spawn on the next update
+    player.tracker.update = lambda fs: Spawn("S", Board(), "T", list("ZJLOIT"), False, [])
+    class _Bot:
+        def add_next_piece(self, p): pass
+        def close(self): pass
+    player.bot = _Bot()
+    player.step(render(board, FallingPiece("S", 0, 4, 10), "T", list("ZJLOIT")))
+    assert player.drop_state is not None, "the hold's own spawn must not abandon the soft drop"
+    assert ["up"] not in out.sent

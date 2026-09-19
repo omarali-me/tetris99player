@@ -366,10 +366,10 @@ class Player:
             if seg and seg[0].kind == "soft_drop":
                 self.output.down(True)
                 now = time.perf_counter()
-                # Fallback release time if the landing is never seen: the open-loop estimate for level-1
-                # speed. It must stay well inside the 0.5 s lock delay counted from the true landing.
+                # Fallback release time if the landing is never seen. Normally the landing check ends the
+                # hold long before this; it only has to be late enough that a slow drop really is down.
                 self.drop_state = {"watch_from": now + self._busy_for,
-                                   "deadline": now + self._busy_for + 0.12 + seg[0].rows * 0.055 + 0.15,
+                                   "deadline": now + self._busy_for + 0.12 + seg[0].rows * 0.07 + 0.30,
                                    "land_y": seg[0].land_y, "hits": 0}
                 self._busy_for = 0.0
                 return
@@ -485,6 +485,17 @@ class Player:
             else:
                 self.drop_deadline = None
         if self.drop_state is not None:
+            own_hold = (sp is not None and self.target is not None and self.target[2]
+                        and sp.piece == self.target[0] and not self.drop_state.get("hold_seen"))
+            if own_hold:
+                # our own hold press swapping the piece in: not a lock. Carry on with the soft drop.
+                self.drop_state["hold_seen"] = True
+                for p in sp.new_pieces:
+                    self.bot.add_next_piece(p)
+                self.tracker.expected_locked = board_cells(self.expected) if self.expected else None
+                self.tracker.trust_expected = self.last_cleared > 0
+                self._watch_drop(fs)
+                return None
             if sp is not None:          # the piece locked under us; abandon the rest of this move
                 log.warning("piece locked during a soft drop; dropping the rest of the move")
                 self.output.down(False)
