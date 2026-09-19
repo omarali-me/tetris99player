@@ -66,7 +66,10 @@ def test_garbage_flagged_when_locked_differs_from_expected():
     tr.update(render(board, FallingPiece.spawn("T", board), None, list("SZJLOI")))
     tr.expected_locked = set()  # we expect an empty board after the T... but garbage arrives
     board.add_garbage(2, hole_col=3)
-    ev = tr.update(render(board, FallingPiece.spawn("S", board), None, list("ZJLOIT")))
+    # a mismatch is re-checked for a few frames (lock flash, clear animation) before it is reported
+    ev = None
+    for _ in range(tr.recheck_frames + 1):
+        ev = ev or tr.update(render(board, FallingPiece.spawn("S", board), None, list("ZJLOIT")))
     assert ev and ev.garbage_arrived
     assert ev.locked.rows[0] == board.rows[0]
 

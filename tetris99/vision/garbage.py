@@ -15,7 +15,8 @@ import numpy as np
 from ..config import BOARD_ROWS, Layout
 
 VAL_MIN = 115      # below this the segment slot is empty (HUD text is ~75)
-SAT_MIN = 130      # coloured segments are far above this; grey ones below
+SAT_MIN = 130      # coloured segments are far above this
+GREY_SAT_MAX = 60  # grey segments are sat ~0-5; single-player modes draw a pale teal panel here (sat ~100)
 RED_HUES = ((0, 8), (160, 179))
 YELLOW_HUES = ((12, 40),)
 
@@ -64,7 +65,7 @@ def read_garbage_meter(frame: np.ndarray, layout: Layout) -> GarbageMeter:
         if y < top_limit or val(y) < VAL_MIN:
             break
         h, s, v = (int(x) for x in col[max(top_limit, y - BODY)])
-        if s < SAT_MIN:
+        if s <= GREY_SAT_MAX:
             queued += 1
         elif _in_ranges(h, RED_HUES):
             imminent += 1

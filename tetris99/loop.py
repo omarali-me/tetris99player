@@ -34,15 +34,29 @@ class DryRunOutput:
 
 
 class SerialOutput:
+    """Real controller. `live` tells the Player it can do closed-loop soft drops: press down, watch
+    the piece through the capture feed, release when it lands."""
+    live = True
+
     def __init__(self, port: str, baud: int):
-        from .control.switch_controller import SwitchController, run_actions
-        self.ctl = SwitchController(port, baud)
-        self._run = run_actions
+        from .control import switch_controller as sc
+        self.sc = sc
+        self.ctl = sc.SwitchController(port, baud)
         if not self.ctl.ping():
             raise RuntimeError("controller did not answer ping")
 
     def run(self, actions: list[Action]) -> None:
-        self._run(self.ctl, actions)
+        self.sc.run_actions(self.ctl, actions)
+
+    def duration(self, actions: list[Action]) -> float:
+        """Seconds the Arduino needs to play these (taps only)."""
+        return len(actions) * (self.sc.TAP_MS + self.sc.GAP_MS) / 1000
+
+    def down(self, pressed: bool) -> None:
+        from .control.protocol import Hat, Op
+        self.ctl._send(Op.HAT, int(Hat.DOWN if pressed else Hat.CENTER))
+        if not pressed:
+            self.ctl._send(Op.WAIT, self.sc.GAP_MS)
 
 
 class Player:
@@ -70,6 +84,13 @@ class Player:
         # After we press hold, the game shows the swapped-in piece and the tracker reports a spawn
         # for it. That spawn is ours to ignore: (piece kind, locked board before our placement).
         self.own_hold_spawn: tuple[str, set] | None = None
+        self.divergences = 0
+        # closed-loop execution: segments of taps separated by soft drops that end when the piece lands
+        self.segments: list[list[Action]] = []
+        self.drop_state: dict | None = None
+        self.last_actions: list[Action] = []
+        self.last_kind = ""
+        self.last_cleared = 0
         self.count_pending_garbage = True
 
     def _launch(self, sp: Spawn) -> None:
@@ -127,6 +148,12 @@ class Player:
             self.own_hold_spawn = None
             if sp.garbage_arrived or (self.expected is not None and board_cells(sp.locked) != board_cells(self.expected)):
                 # A reset with a request in flight can hand back a stale move; relaunching is race-free.
+                if self.expected is not None:
+                    seen, exp = board_cells(sp.locked), board_cells(self.expected)
+                    self.divergences += 1
+                    log.info("DIVERGED after %s [%s]: missing=%s extra=%s cleared=%d",
+                             self.last_kind, " ".join(a.kind for a in self.last_actions),
+                             sorted(exp - seen), sorted(seen - exp), self.last_cleared)
                 (log.debug if self.trainer else log.info)("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
@@ -149,17 +176,27 @@ class Player:
         try:
             actions, final = compile_move(sp.locked, kind, move)
         except RuntimeError as e:
-            log.error("executor rejected path: %s; relaunching bot", e)
+            # The bot's idea of the board was stale. Relaunch from what we see and ask again, once.
+            log.error("executor rejected path: %s; relaunching bot and retrying", e)
             self._launch(sp)
-            return None
+            move = self._get_move(incoming)
+            if move is None:
+                return None
+            kind = sp.piece if not move.hold else (sp.hold if sp.hold else sp.queue[0])
+            try:
+                actions, final = compile_move(sp.locked, kind, move)
+            except RuntimeError as e2:
+                log.error("rejected again (%s); skipping this piece", e2)
+                return None
 
         if move.hold:
             self.own_hold_spawn = (kind, board_cells(sp.locked))
         self.target = (kind, list(final.cells()), move.hold)
         if not self.trainer:
-            self.output.run(actions)
+            self._execute(actions)
         board = Board(list(sp.locked.rows))
-        board.place(final.cells())
+        self.last_cleared = board.place(final.cells())
+        self.last_actions, self.last_kind = actions, kind
         self.expected = board
         self.tracker.expected_locked = board_cells(board)
         self.pieces += 1
@@ -240,11 +277,73 @@ class Player:
                 log.info("layout complete; press space for the next one")
                 self.plan_steps, self.laid_done = [], 0
 
+    # ------------------------------------------------------------------ execution
+    def _execute(self, actions: list[Action]) -> None:
+        """Send a move. With a live controller, a soft drop is closed-loop: everything up to it is
+        sent, then down is held until the capture feed shows the piece has stopped falling."""
+        if not getattr(self.output, "live", False) or not any(a.kind == "soft_drop" for a in actions):
+            self.output.run(actions)
+            return
+        self.segments, cur = [], []
+        for a in actions:
+            if a.kind == "soft_drop":
+                self.segments.append(cur); self.segments.append([a]); cur = []
+            else:
+                cur.append(a)
+        self.segments.append(cur)
+        self._advance_segments()
+
+    def _advance_segments(self) -> None:
+        while self.segments:
+            seg = self.segments.pop(0)
+            if seg and seg[0].kind == "soft_drop":
+                self.output.down(True)
+                now = time.perf_counter()
+                self.drop_state = {"watch_from": now + self._busy_for + 0.12, "deadline": now + self._busy_for + seg[0].rows * 0.07 + 1.0,
+                                   "y": None, "start_y": None, "stable": 0, "rows": seg[0].rows}
+                self._busy_for = 0.0
+                return
+            if seg:
+                self.output.run(seg)
+                self._busy_for = self.output.duration(seg)
+        self.drop_state = None
+
+    _busy_for = 0.0
+
+    def _watch_drop(self) -> None:
+        """Called every frame while down is held: release once the piece's height stops changing."""
+        ds, now = self.drop_state, time.perf_counter()
+        active = self.tracker.state.active
+        y = min((c[1] for c in active), default=None)
+        if now >= ds["watch_from"] and y is not None:
+            if ds["start_y"] is None:
+                ds["start_y"] = y
+            ds["stable"] = ds["stable"] + 1 if y == ds["y"] else 0
+            ds["y"] = y
+        # Landed = it has come down from where it started AND then held still for 100 ms. Right after
+        # down is pressed the piece looks still for ~120 ms of latency; that must not count.
+        descended = ds["rows"] == 0 or (ds["start_y"] is not None and ds["y"] is not None and ds["y"] < ds["start_y"])
+        if (descended and ds["stable"] >= 6) or now >= ds["deadline"]:
+            if now >= ds["deadline"]:
+                log.warning("soft drop: landing not seen in time; releasing")
+            self.output.down(False)
+            self.drop_state = None
+            self._busy_for = 0.0
+            self._advance_segments()
+
     def step(self, fs: FrameState) -> list[Action] | None:
         if self.trainer:
             self.coach_step(fs)
             return None
         sp = self.tracker.update(fs)
+        if self.drop_state is not None:
+            if sp is not None:          # the piece locked under us; abandon the rest of this move
+                log.warning("piece locked during a soft drop; dropping the rest of the move")
+                self.output.down(False)
+                self.drop_state, self.segments = None, []
+            else:
+                self._watch_drop()
+                return None
         return self.on_spawn(sp) if sp else None
 
     def close(self) -> None:
@@ -475,10 +574,24 @@ def main() -> None:
     t0 = time.perf_counter()
     n = 0
     t_report, n_report = t0, 0
+    last_progress, last_pieces, stall_logged = t0, 0, False
     try:
         for frame, fs in frames:
             n += 1
             player.step(fs)
+            # stall detector: in game mode a spawn should come every second or two
+            if player.pieces != last_pieces:
+                last_pieces, last_progress, stall_logged = player.pieces, time.perf_counter(), False
+            elif (not args.trainer and frame is not None and player.pieces > 0 and not stall_logged
+                  and time.perf_counter() - last_progress > 3.0):
+                stall_logged = True
+                import cv2
+                path = f"recordings/stall_{int(time.time())}.png"
+                cv2.imwrite(path, frame)
+                st = player.tracker.state
+                log.warning("no spawn for 3 s. tracker: current=%s hold=%s queue=%s | frame reads hold=%s queue=%s | saved %s",
+                            st.current, st.hold, "".join(st.queue), fs.hold.value if fs.hold else "-",
+                            "".join(q.value if q else "?" for q in fs.queue), path)
             if view and n % 2 == 0 and not view.show(frame, fs):  # overlay at 30 fps, tracking at 60
                 break
             now = time.perf_counter()

@@ -85,6 +85,20 @@ def _component(start: Coord, cells: set[Coord]) -> set[Coord]:
     return seen
 
 
+def grounded(cells: set[Coord]) -> set[Coord]:
+    """Cells connected to the floor through other cells. Used to drop floating junk."""
+    seen: set[Coord] = set()
+    todo = [c for c in cells if c[1] == 0]
+    while todo:
+        c = todo.pop()
+        if c in seen:
+            continue
+        seen.add(c)
+        x, y = c
+        todo += [n for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)) if n in cells and n not in seen]
+    return seen
+
+
 def split_spawned(cells: dict[Coord, Cell], piece: str,
                   expected_locked: set[Coord] | None = None) -> tuple[set[Coord], set[Coord]]:
     """At spawn time, separate the freshly spawned piece from the locked stack.
@@ -117,6 +131,8 @@ class Tracker:
         self._pending_count = 0
         self._pending_hold: str | None = None
         self._pending_hold_count = 0
+        self._deferred: tuple[str, list[str], int] | None = None  # (piece, new pieces, frames left)
+        self.recheck_frames = 5
         self.expected_locked: set[Coord] | None = None  # set by the controller after a placement
 
     def _stable_queue(self, queue: list[str]) -> list[str] | None:
@@ -141,9 +157,32 @@ class Tracker:
             self._pending_hold, self._pending_hold_count = hold, 1
         return self._pending_hold_count >= self.confirm_frames
 
+    def _emit(self, fs: FrameState, cells, spawned: str, new_pieces: list[str], final: bool) -> Spawn | None:
+        """Build the spawn event. If the locked board disagrees with the caller's prediction, wait a
+        few frames first: the lock flash and the line-clear collapse can still be on screen."""
+        st = self.state
+        active, locked = split_spawned(cells, spawned, self.expected_locked)
+        if st.spawns == 0:
+            locked = grounded(locked)   # first spawn: the GO! banner can read as floating blocks
+        if self.expected_locked is not None and locked != self.expected_locked and not final:
+            return None
+        garbage = self.expected_locked is not None and locked != self.expected_locked
+        self.expected_locked = None
+        self._deferred = None
+        st.locked, st.active, st.current = locked, active, spawned
+        st.spawns += 1
+        return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces,
+                     fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
+
     def update(self, fs: FrameState) -> Spawn | None:
         st = self.state
         cells = grid_cells(fs.grid)
+        if self._deferred is not None:
+            piece, new_pieces, left = self._deferred
+            ev = self._emit(fs, cells, piece, new_pieces, final=left <= 1)
+            if ev is None:
+                self._deferred = (piece, new_pieces, left - 1)
+            return ev
         queue = [q.value for q in fs.queue if q is not None]
         if len(queue) != len(fs.queue):
             queue = st.queue  # unreadable slot: keep last reading
@@ -179,13 +218,10 @@ class Tracker:
 
         if spawned is not None:
             self._pending_hold, self._pending_hold_count = None, 0
-            active, locked = split_spawned(cells, spawned, self.expected_locked)
-            garbage = self.expected_locked is not None and locked != self.expected_locked
-            self.expected_locked = None
-            st.locked, st.active, st.current = locked, active, spawned
-            st.spawns += 1
-            return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces,
-                         fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
+            ev = self._emit(fs, cells, spawned, new_pieces, final=self.recheck_frames <= 0)
+            if ev is None:
+                self._deferred = (spawned, new_pieces, self.recheck_frames)
+            return ev
 
         # between spawns: attribute non-locked cells to the active piece
         visible = set(cells)
