@@ -71,7 +71,10 @@ def play(tag: str, extra: list[str], press: str = "hold", pace: float | None = N
     if times:
         a, b = times[0], times[-1]
         secs = (int(b[0]) * 3600 + int(b[1]) * 60 + int(b[2])) - (int(a[0]) * 3600 + int(a[1]) * 60 + int(a[2]))
-    return {"tag": tag, "pace": PACE if pace is None else pace, "pieces": pieces(log), "seconds": secs,
+    eff = PACE if pace is None else pace
+    if "--pace" in extra and pace is None:          # the mode sets its own pace (argparse takes the last one)
+        eff = float(extra[len(extra) - 1 - extra[::-1].index("--pace") + 1])
+    return {"tag": tag, "pace": eff, "pieces": pieces(log), "seconds": secs,
             "pieces_per_s": round(pieces(log) / secs, 2) if secs else 0, "mismatches": text.count("DIVERGED"),
             "locked_in_softdrop": text.count("locked during a soft drop"), "stalls": text.count("no spawn for 3 s")}
 

@@ -7,3 +7,4 @@ config/layout.json
 third_party/
 config/keymap.json
 tools/bin/
+*.egg-info/
