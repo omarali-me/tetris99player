@@ -61,3 +61,24 @@ def test_out_of_step_is_detected_and_resynchronised_from_the_screen():
     assert player.tracker.state.current == "Z"
     assert out.sent, "a move should have been sent for the piece that is really in play"
     assert player.target[0] in ("Z", "S")   # Z placed, or Z held and the next piece (S) placed
+
+
+def test_soft_drop_landing_watches_the_held_piece_after_a_hold():
+    """A move that starts with hold places the swapped-in piece; the landing check must look for
+    that piece's colour, not the colour of the piece that spawned."""
+    from tetris99.engine.board import Board
+    from tetris99.engine.piece import FallingPiece
+    from tetris99.vision.synthetic import render
+    out = FakeLive()
+    player = Player(out, threads=1, max_nodes=3000)
+    board = Board()
+    player.tracker.state.current = "T"                       # T spawned...
+    player.target = ("S", [(3, 0), (4, 0), (4, 1), (5, 1)], True)   # ...but we held it and are placing S
+    player.drop_state = {"watch_from": 0.0, "deadline": 1e18, "land_y": 0, "hits": 0}
+    landed = FallingPiece("S", 0, 4, 0)                       # the S resting on the floor
+    assert min(y for _, y in landed.cells()) == 0
+    for _ in range(3):
+        player._watch_drop(render(board, landed, "T", list("ZJLOIT")))
+    assert player.drop_state is None, "landing of the held piece was not recognised"
+    assert ["up"] in out.sent
+    player.close()

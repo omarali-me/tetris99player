@@ -392,7 +392,10 @@ class Player:
         from .vision.cells import Cell
         from .vision.tracker import grid_cells
         st = self.tracker.state
-        colour = Cell(st.current) if st.current else None
+        # Watch the piece we are actually placing. After a hold that is the swapped-in piece, not the
+        # one that spawned: watching the spawned piece's colour made every hold+soft-drop move time out.
+        kind = self.target[0] if self.target else st.current
+        colour = Cell(kind) if kind else None
         mine = {c for c, k in grid_cells(fs.grid).items() if k is colour and c not in st.locked}
         ds["mine_sizes"] = ds.get("mine_sizes", []) + [len(mine)]
         active = mine if 1 <= len(mine) <= 4 else set()
@@ -410,7 +413,7 @@ class Player:
                 compact = [ys[0]] + [b for a, b in zip(ys, ys[1:]) if b != a] if ys else []
                 sizes = ds.get("mine_sizes", [])
                 log.info("soft drop released on the timer: wanted row %s, piece %s lowest row went %s; cells of its colour outside the stack per frame: %s; now %s",
-                         ds["land_y"], self.tracker.state.current, compact[-8:],
+                         ds["land_y"], kind, compact[-8:],
                          sorted(set(sizes)), sorted(mine)[:8])
             self.output.down(False)
             self.drop_state = None
