@@ -140,3 +140,22 @@ def test_temporal_vote_ignores_a_one_frame_spark():
         ev = ev or tr.update(f)
     assert ev and ev.piece == "T"
     assert board_cells(ev.locked) == board_cells(board)               # the spark did not make it in
+
+
+def test_first_piece_of_a_match_is_recognised_without_a_queue_shift():
+    tr = Tracker(confirm_frames=1)
+    board = Board()
+    q = list("SZJLOI")
+    for _ in range(3):
+        assert tr.update(render(board, None, None, q)) is None          # countdown: queue drawn, no piece
+    piece = FallingPiece.spawn("T", board)
+    ev = None
+    for _ in range(4):
+        ev = ev or tr.update(render(board, piece, None, q))              # GO: piece appears, queue unchanged
+    assert ev and ev.piece == "T" and ev.queue == q and ev.new_pieces == []
+    # and the normal queue-shift path carries on from there
+    board.place([(0, 0), (1, 0), (2, 0), (1, 1)])
+    ev2 = None
+    for _ in range(2):
+        ev2 = ev2 or tr.update(render(board, FallingPiece.spawn("S", board), None, list("ZJLOIT")))
+    assert ev2 and ev2.piece == "S"

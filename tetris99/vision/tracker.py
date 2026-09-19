@@ -282,10 +282,32 @@ class Tracker:
                 self._deferred = (spawned, new_pieces, self.recheck_frames)
             return ev
 
-        # between spawns: attribute non-locked cells to the active piece
-        visible = set(cells)
-        if st.locked <= visible:
-            extra = visible - st.locked
-            if len(extra) <= 4:
-                st.active = extra
+        # between spawns: the active piece is whatever shows the current piece's colour outside the
+        # locked stack. Matching on colour keeps sparks and other overlays out of it.
+        if st.current:
+            colour = Cell(st.current)
+            mine = {c for c, k in cells.items() if k is colour and c not in st.locked}
+            if 1 <= len(mine) <= 4:
+                st.active = mine
+
+        # The first piece of a match spawns without the queue shifting (the queue is already drawn
+        # during the countdown), so it has to be recognised directly: one small single-coloured group
+        # at the very top of an otherwise empty upper board, seen on a few consecutive frames.
+        if st.spawns == 0 and st.current is None and len(st.queue) == len(fs.queue) and not self._collect:
+            top = {c: k for c, k in cells.items() if c[1] >= BOARD_ROWS - 3 and k in PIECE_CELLS}
+            kinds = {k for k in top.values()}
+            upper_clear = not any(BOARD_ROWS - 8 <= c[1] < BOARD_ROWS - 3 for c in cells)
+            if len(kinds) == 1 and 2 <= len(top) <= 4 and upper_clear and queue == st.queue:
+                kind = next(iter(kinds)).value
+                self._first_seen = self._first_seen + 1 if getattr(self, "_first_kind", None) == kind else 1
+                self._first_kind = kind
+                if self._first_seen >= 3:
+                    locked = grounded({c for c in cells if c not in top})
+                    st.locked, st.active, st.current = locked, set(top), kind
+                    st.spawns += 1
+                    self.first_piece_detected = True
+                    return Spawn(kind, to_board(locked), st.hold, list(st.queue), False, [],
+                                 fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
+            else:
+                self._first_seen = 0
         return None

@@ -100,6 +100,7 @@ class Player:
         # for it. That spawn is ours to ignore: (piece kind, locked board before our placement).
         self.own_hold_spawn: tuple[str, set] | None = None
         self.divergences = 0
+        self.softdrop_timeouts = 0
         self.garbage_events = 0
         # While the Arduino is still playing our last move, any spawn the tracker reports is a side
         # effect of that move (the hold swap), never a fresh piece: deciding again would put every
@@ -366,8 +367,11 @@ class Player:
             if seg and seg[0].kind == "soft_drop":
                 self.output.down(True)
                 now = time.perf_counter()
-                self.drop_state = {"watch_from": now + self._busy_for + 0.12, "deadline": now + self._busy_for + seg[0].rows * 0.07 + 1.0,
-                                   "y": None, "start_y": None, "stable": 0, "rows": seg[0].rows}
+                # Fallback release time if the landing is never seen: the open-loop estimate for level-1
+                # speed. It must stay well inside the 0.5 s lock delay counted from the true landing.
+                self.drop_state = {"watch_from": now + self._busy_for,
+                                   "deadline": now + self._busy_for + 0.12 + seg[0].rows * 0.055 + 0.15,
+                                   "land_y": seg[0].land_y, "hits": 0}
                 self._busy_for = 0.0
                 return
             if seg:
@@ -381,21 +385,21 @@ class Player:
     _busy_for = 0.0
 
     def _watch_drop(self) -> None:
-        """Called every frame while down is held: release once the piece's height stops changing."""
+        """Called every frame while down is held. The executor knows the row the piece must come to
+        rest on, so landing is simply: the piece's lowest cell is on that row, on two frames running.
+        That holds at any gravity, including speeds where the piece is already down before we look."""
         ds, now = self.drop_state, time.perf_counter()
         active = self.tracker.state.active
         y = min((c[1] for c in active), default=None)
-        if now >= ds["watch_from"] and y is not None:
-            if ds["start_y"] is None:
-                ds["start_y"] = y
-            ds["stable"] = ds["stable"] + 1 if y == ds["y"] else 0
-            ds["y"] = y
-        # Landed = it has come down from where it started AND then held still for 100 ms. Right after
-        # down is pressed the piece looks still for ~120 ms of latency; that must not count.
-        descended = ds["rows"] == 0 or (ds["start_y"] is not None and ds["y"] is not None and ds["y"] < ds["start_y"])
-        if (descended and ds["stable"] >= 6) or now >= ds["deadline"]:
-            if now >= ds["deadline"]:
-                log.warning("soft drop: landing not seen in time; releasing")
+        if now >= ds["watch_from"] and y is not None and y == ds["land_y"]:
+            ds["hits"] += 1
+        else:
+            ds["hits"] = 0
+        timed_out = now >= ds["deadline"]
+        if ds["hits"] >= 2 or timed_out:
+            if timed_out:
+                self.softdrop_timeouts += 1
+                log.debug("soft drop: landing not seen; released on the timer")
             self.output.down(False)
             self.drop_state = None
             self._busy_for = 0.0

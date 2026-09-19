@@ -25,6 +25,7 @@ def test_soft_drop_carries_its_distance():
     move = Move(hold=False, cells=[(3, 0), (4, 0), (5, 0), (4, 1)], movements=[Movement.DROP], nodes=0, depth=0)
     actions, _ = compile_move(b, "T", move)
     assert actions[0].kind == "soft_drop" and actions[0].rows == 19
+    assert actions[0].land_y == 0
 
 
 def test_single_tap_not_das():

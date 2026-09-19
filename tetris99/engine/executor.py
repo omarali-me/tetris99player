@@ -25,7 +25,8 @@ DAS_MIN_RUN = 6
 @dataclass(frozen=True)
 class Action:
     kind: Kind
-    rows: int = 0   # soft_drop only: how many rows the piece falls, so the hold time can be scaled
+    rows: int = 0     # soft_drop only: how many rows the piece falls, so the hold time can be scaled
+    land_y: int = -1  # soft_drop only: lowest row of the piece once it has landed
 
 
 def compile_move(board: Board, piece_kind: str, move: Move) -> tuple[list[Action], FallingPiece]:
@@ -68,7 +69,7 @@ def compile_move(board: Board, piece_kind: str, move: Move) -> tuple[list[Action
         elif m == Movement.DROP:
             y0 = piece.y
             piece.sonic_drop(board)
-            actions.append(Action("soft_drop", rows=y0 - piece.y))
+            actions.append(Action("soft_drop", rows=y0 - piece.y, land_y=min(y for _, y in piece.cells())))
         i += 1
 
     piece.sonic_drop(board)
