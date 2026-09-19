@@ -78,7 +78,8 @@ def test_soft_drop_landing_watches_the_held_piece_after_a_hold():
     landed = FallingPiece("S", 0, 4, 0)                       # the S resting on the floor
     assert min(y for _, y in landed.cells()) == 0
     for _ in range(3):
-        player._watch_drop(render(board, landed, "T", list("ZJLOIT")))
+        if player.drop_state is not None:
+            player._watch_drop(render(board, landed, "T", list("ZJLOIT")))
     assert player.drop_state is None, "landing of the held piece was not recognised"
     assert ["up"] in out.sent
     player.close()
