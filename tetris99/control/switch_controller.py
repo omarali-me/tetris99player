@@ -24,7 +24,13 @@ class SwitchController:
         self.ser.reset_input_buffer()
 
     def _send(self, op: Op, arg: int = 0) -> None:
+        """One 3-byte command, paced. The ATmega32U4's serial receive buffer is 64 bytes and the
+        firmware can block ~8 ms per USB report, so a whole move sent in one burst (up to ~90 bytes)
+        overflows it and the tail of the move, the hard drop, is lost. At one command per 2.5 ms
+        at most ~10 bytes can queue up. The Arduino needs ~70 ms per tap anyway, so this is free."""
         self.ser.write(encode(op, arg))
+        self.ser.flush()
+        time.sleep(0.0025)
 
     def ping(self) -> bool:
         """Ping, re-aligning the 3-byte framing if needed. A stray byte on the wire (the adapter's
