@@ -138,6 +138,10 @@ class Tracker:
         # the next piece spawns while the rows are still visibly collapsing, so the screen lags the
         # true board. Garbage never enters on a clearing placement, so the prediction is exact.
         self.trust_expected = False
+        # Live play: read the locked board over this many extra frames after a spawn and take a
+        # per-cell majority. Sparks, attack lines and flashes move from frame to frame; blocks don't.
+        self.settle_frames = 0
+        self._collect: dict | None = None
         self.expected_locked: set[Coord] | None = None  # set by the controller after a placement
 
     def _stable_queue(self, queue: list[str]) -> list[str] | None:
@@ -194,9 +198,39 @@ class Tracker:
         return Spawn(spawned, to_board(locked), st.hold, list(st.queue), garbage, new_pieces,
                      fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
 
+    def _vote(self, fs: FrameState, cells) -> Spawn | None:
+        """Temporal vote while collecting frames after a spawn (settle_frames > 0)."""
+        st, col = self.state, self._collect
+        active, locked = split_spawned(cells, col["piece"], self.expected_locked)
+        col["locked"].append(locked); col["active"] = active or col["active"]
+        col["left"] -= 1
+        if col["left"] > 0:
+            return None
+        n = len(col["locked"])
+        counts: dict[Coord, int] = {}
+        for ls in col["locked"]:
+            for c in ls:
+                counts[c] = counts.get(c, 0) + 1
+        voted = {c for c, k in counts.items() if k * 2 > n}
+        connected = grounded(voted)
+        voted = connected if st.spawns == 0 else {c for c in voted if c in connected or c[1] < HUD_MIN_ROW}
+        if self.expected_locked is not None and voted != self.expected_locked and col["extensions"] < 2:
+            # still disagrees with the prediction: an animation may be in progress, look a bit longer
+            col["extensions"] += 1; col["left"] = self.settle_frames; col["locked"] = col["locked"][-2:]
+            return None
+        garbage = self.expected_locked is not None and voted != self.expected_locked
+        piece, new_pieces = col["piece"], col["new_pieces"]
+        self.expected_locked, self._collect = None, None
+        st.locked, st.active, st.current = voted, col["active"], piece
+        st.spawns += 1
+        return Spawn(piece, to_board(voted), st.hold, list(st.queue), garbage, new_pieces,
+                     fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
+
     def update(self, fs: FrameState) -> Spawn | None:
         st = self.state
         cells = grid_cells(fs.grid)
+        if self._collect is not None:
+            return self._vote(fs, cells)
         if self._deferred is not None:
             piece, new_pieces, left = self._deferred
             ev = self._emit(fs, cells, piece, new_pieces, final=left <= 1)
@@ -236,6 +270,11 @@ class Tracker:
         elif hold_changed:
             st.hold = hold
 
+        if spawned is not None and self.settle_frames > 0 and not (self.trust_expected and self.expected_locked is not None):
+            self._pending_hold, self._pending_hold_count = None, 0
+            self._collect = {"piece": spawned, "new_pieces": new_pieces, "locked": [], "active": set(),
+                             "left": self.settle_frames + 1, "extensions": 0}
+            return self._vote(fs, cells)
         if spawned is not None:
             self._pending_hold, self._pending_hold_count = None, 0
             ev = self._emit(fs, cells, spawned, new_pieces, final=self.recheck_frames <= 0)

@@ -72,8 +72,10 @@ class Player:
     """Drives one game. Feed FrameStates via step(); it returns the actions it issued, if any."""
 
     def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
-                 weights: dict | None = None, trainer: bool = False, plan_len: int = 4):
+                 weights: dict | None = None, trainer: bool = False, plan_len: int = 4, pace_s: float = 0.0):
         self.output = output
+        self.pace_s = pace_s            # minimum seconds per piece ("human pace"); the wait is think time
+        self.last_sent = 0.0
         self.weights = weights
         self.trainer = trainer          # coach mode: a human plays; layouts are shown on demand
         self.plan_len = plan_len
@@ -85,6 +87,8 @@ class Player:
         self.visible: int | None = None         # None = show all remaining steps, k = show the first k
         self._last_locked: set = set()
         self.tracker = Tracker()
+        if getattr(output, "live", False):
+            self.tracker.settle_frames = 4   # ~67 ms of frames voted per spawn: sparks and flashes wash out
         self.bot: ColdClear | None = None
         self.threads, self.max_nodes = threads, max_nodes
         self.think_ms = think_ms
@@ -196,6 +200,10 @@ class Player:
                 (log.debug if self.trainer else log.info)("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
+        if self.pace_s and getattr(self.output, "live", False):
+            wait = self.last_sent + self.pace_s - time.perf_counter()
+            if wait > 0:
+                time.sleep(wait)     # the bot keeps searching meanwhile
         # Cold Clear's `incoming` is the garbage expected after placing this piece. Red and yellow
         # segments are close; grey ones are freshly queued and may still be cancelled by our own
         # attack, so they count half.
@@ -232,6 +240,7 @@ class Player:
             self.own_hold_spawn = (kind, board_cells(sp.locked))
         self.target = (kind, list(final.cells()), move.hold)
         if not self.trainer:
+            self.last_sent = time.perf_counter()
             self._execute(actions)
         board = Board(list(sp.locked.rows))
         self.last_cleared = board.place(final.cells())
@@ -613,6 +622,7 @@ def main() -> None:
     ap.add_argument("--trainer", action="store_true", help="coach: you play; press space to lay out Cold Clear's placements for all known pieces (implies --show)")
     ap.add_argument("--mode", choices=["normal", "tspin", "allclear"], default="normal", help="coach: starting mode")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
+    ap.add_argument("--pace", type=float, default=0.0, help="live: minimum seconds per piece (human pace); 0 = as fast as possible")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
     ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
     ap.add_argument("-v", action="store_true")
@@ -636,7 +646,7 @@ def main() -> None:
         output = DryRunOutput()
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
                     think_ms=args.think if args.source == "synthetic" else (300 if args.trainer else 0),
-                    trainer=args.trainer)
+                    trainer=args.trainer, pace_s=args.pace)
     player.mode = args.mode
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 

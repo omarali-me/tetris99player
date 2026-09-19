@@ -126,3 +126,17 @@ def test_floating_remnant_is_kept_but_hud_junk_is_dropped():
     cells = board_cells(ev.locked)
     assert (0, 2) in cells          # remnant survives
     assert (8, 17) not in cells     # HUD junk does not
+
+
+def test_temporal_vote_ignores_a_one_frame_spark():
+    tr = Tracker(confirm_frames=1); tr.settle_frames = 4
+    board = Board(); board.rows[0] = 0b0000001111
+    tr.update(render(board, None, None, list("TSZJLO")))
+    piece = FallingPiece.spawn("T", board)
+    sparked = Board(list(board.rows)); sparked.rows[0] |= 1 << 8      # a spark read as a block, one frame only
+    frames = [render(sparked, piece, None, list("SZJLOI"))] + [render(board, piece, None, list("SZJLOI"))] * 5
+    ev = None
+    for f in frames:
+        ev = ev or tr.update(f)
+    assert ev and ev.piece == "T"
+    assert board_cells(ev.locked) == board_cells(board)               # the spark did not make it in
