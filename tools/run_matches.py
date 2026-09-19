@@ -70,6 +70,10 @@ if __name__ == "__main__":
     from_menu = "--from-menu" in args          # first match: tap A on the TETRIS 99 tile instead of holding Play Again
     order = [a for a in args if not a.startswith("--")] or ["sd", "sd", "sd"]
     stamp = time.strftime("%H%M")
+    # The Switch dims its screen when idle and the first input only wakes it. ZL does nothing in the
+    # menus or on a results screen, so use it as the wake-up press.
+    subprocess.run([PY, str(ROOT / "tools/hold.py"), "ZL", "0.15"], cwd=ROOT, check=False, stdout=subprocess.DEVNULL)
+    time.sleep(1.0)
     for i, mode in enumerate(order, 1):
         r = play(f"{stamp}_{i}_{mode}", MODES[mode], press="tap" if (from_menu and i == 1) else "hold")
         print(r, flush=True)
