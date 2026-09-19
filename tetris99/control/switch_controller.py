@@ -7,11 +7,14 @@ import serial
 
 from .protocol import Button, Hat, Op, encode
 
-# Tetris 99 handling is fixed by the game. Values in ms; refine by measurement.
-TAP_MS = 34            # ~2 frames, reliably registered
-GAP_MS = 34            # release time between inputs
-DAS_MS = 300           # long enough for auto-shift to carry the piece to a wall
-SOFT_DROP_MS = 400     # long enough to soft drop from the top to the floor
+# Tetris 99 handling, measured with tools/measure_timing.py on 2026-09-19 (150 Line Mode, level 1):
+#   press -> visible move 116 ms; taps of 17/25/34/50 ms all register; 3 taps at 34/34 and 25/25
+#   moved 3 columns 8/8 times (17/17 dropped one in 8); DAS 200 ms, ARR 33 ms; soft drop ~50 ms/row.
+TAP_MS = 34                 # 2 frames
+GAP_MS = 34                 # 2 frames between inputs
+DAS_MS = 560                # wall to wall: 200 + 9 x 33 + margin
+SOFT_DROP_MS_PER_ROW = 55   # soft drop is 20x gravity: ~50 ms/row at level 1, faster later
+SOFT_DROP_MARGIN_MS = 150   # covers input latency; over-holding after landing is harmless
 
 
 class SwitchController:
@@ -75,6 +78,6 @@ def run_actions(ctl: "SwitchController", actions) -> None:
         elif k == "right": ctl.right()
         elif k == "das_left": ctl.das_left()
         elif k == "das_right": ctl.das_right()
-        elif k == "soft_drop": ctl.hat_hold(Hat.DOWN, SOFT_DROP_MS)
+        elif k == "soft_drop": ctl.hat_hold(Hat.DOWN, max(1, a.rows) * SOFT_DROP_MS_PER_ROW + SOFT_DROP_MARGIN_MS)
         elif k == "hard_drop": ctl.hard_drop()
         else: raise ValueError(k)

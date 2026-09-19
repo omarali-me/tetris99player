@@ -47,12 +47,24 @@ class Rig:
         self.ser.flush()
 
     def piece_x(self) -> tuple[int, int] | None:
-        """(leftmost column, topmost row) of the falling piece in the next frame, or None."""
+        """(leftmost column, topmost row) of the falling piece in the next frame, or None.
+        The piece is the connected same-colour group containing the topmost coloured cell, so a
+        stack reaching into the upper rows does not confuse it (as long as the piece is above it)."""
         grid = read_grid(next(self.frames), self.layout)
-        cells = [(c, r) for r in range(TOP_ROWS) for c in range(10) if grid[r][c] in PIECES]
-        if not 1 <= len(cells) <= 4:
+        top = next(((c, r) for r in range(TOP_ROWS) for c in range(10) if grid[r][c] in PIECES), None)
+        if top is None:
             return None
-        return min(c for c, _ in cells), min(r for _, r in cells)
+        colour = grid[top[1]][top[0]]
+        seen, todo = {top}, [top]
+        while todo:
+            c, r = todo.pop()
+            for n in ((c + 1, r), (c - 1, r), (c, r + 1), (c, r - 1)):
+                if 0 <= n[0] < 10 and 0 <= n[1] < 20 and n not in seen and grid[n[1]][n[0]] is colour:
+                    seen.add(n); todo.append(n)
+        if len(seen) > 4:
+            return None
+        # it must be floating: nothing solid directly under its lowest cells would mean it has landed
+        return min(c for c, _ in seen), min(r for _, r in seen)
 
     def wait_piece(self, timeout=5.0) -> tuple[int, int]:
         """Wait until a piece is visible and its column is stable for a few frames."""
@@ -78,7 +90,16 @@ class Rig:
         return None
 
     def new_piece(self) -> None:
-        self.send(Op.HAT, int(Hat.UP)); self.send(Op.WAIT, 40); self.send(Op.HAT, int(Hat.CENTER))
+        """Hard-drop the current piece somewhere new each time so the stack stays low and flat:
+        slide to a wall, step back 0-3 columns, drop."""
+        self.drops = getattr(self, "drops", 0) + 1
+        wall = Hat.LEFT if self.drops % 2 else Hat.RIGHT
+        back = Hat.RIGHT if self.drops % 2 else Hat.LEFT
+        self.send(Op.HAT, int(wall)); time.sleep(0.5); self.send(Op.HAT, int(Hat.CENTER)); time.sleep(0.08)
+        for _ in range((self.drops // 2) % 4):
+            self.send(Op.HAT, int(back)); self.send(Op.WAIT, 50); self.send(Op.HAT, int(Hat.CENTER)); self.send(Op.WAIT, 50)
+        time.sleep(0.5)
+        self.send(Op.HAT, int(Hat.UP)); self.send(Op.WAIT, 50); self.send(Op.HAT, int(Hat.CENTER))
         time.sleep(0.8)
 
     def close(self):

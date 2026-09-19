@@ -11,12 +11,20 @@ def test_spawn_cells_match_coldclear_convention():
     assert sorted(p.cells()) == [(3, 19), (4, 19), (4, 20), (5, 19)]
 
 
-def test_das_to_wall():
+def test_short_runs_are_tapped_not_das():
+    # measured: tapping beats DAS for every distance reachable from spawn
     b = Board()
     move = Move(hold=False, cells=[(0, 0), (1, 0), (2, 0), (3, 0)],
                 movements=[Movement.LEFT] * 3, nodes=0, depth=0)
     actions, piece = compile_move(b, "I", move)
-    assert [a.kind for a in actions] == ["das_left", "hard_drop"]
+    assert [a.kind for a in actions] == ["left", "left", "left", "hard_drop"]
+
+
+def test_soft_drop_carries_its_distance():
+    b = Board()
+    move = Move(hold=False, cells=[(3, 0), (4, 0), (5, 0), (4, 1)], movements=[Movement.DROP], nodes=0, depth=0)
+    actions, _ = compile_move(b, "T", move)
+    assert actions[0].kind == "soft_drop" and actions[0].rows == 19
 
 
 def test_single_tap_not_das():
