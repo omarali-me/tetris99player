@@ -95,6 +95,10 @@ class Player:
         self.own_hold_spawn: tuple[str, set] | None = None
         self.divergences = 0
         self.garbage_events = 0
+        # watchdog: when a hard drop was sent and no new piece shows up, the input was lost; re-send it
+        self.drop_deadline: float | None = None
+        self.drop_retries = 0
+        self.redrops = 0
         self.fresh_think_ms = 90
         # closed-loop execution: segments of taps separated by soft drops that end when the piece lands
         self.segments: list[list[Action]] = []
@@ -300,11 +304,17 @@ class Player:
                 self.plan_steps, self.laid_done = [], 0
 
     # ------------------------------------------------------------------ execution
+    def _arm_watchdog(self, sent: list[Action]) -> None:
+        if getattr(self.output, "live", False):
+            self.drop_deadline = time.perf_counter() + self.output.duration(sent) + 0.7
+            self.drop_retries = 0
+
     def _execute(self, actions: list[Action]) -> None:
         """Send a move. With a live controller, a soft drop is closed-loop: everything up to it is
         sent, then down is held until the capture feed shows the piece has stopped falling."""
         if not getattr(self.output, "live", False) or not any(a.kind == "soft_drop" for a in actions):
             self.output.run(actions)
+            self._arm_watchdog(actions)
             return
         self.segments, cur = [], []
         for a in actions:
@@ -328,6 +338,8 @@ class Player:
             if seg:
                 self.output.run(seg)
                 self._busy_for = self.output.duration(seg)
+                if not self.segments:
+                    self._arm_watchdog(seg)
         self.drop_state = None
 
     _busy_for = 0.0
@@ -358,6 +370,17 @@ class Player:
             self.coach_step(fs)
             return None
         sp = self.tracker.update(fs)
+        if sp is not None:
+            self.drop_deadline = None
+        elif self.drop_deadline is not None and self.drop_state is None and time.perf_counter() > self.drop_deadline:
+            if self.drop_retries < 3:
+                self.drop_retries += 1
+                self.redrops += 1
+                log.warning("no new piece %.1f s after the hard drop: re-sending it (retry %d)", 0.7, self.drop_retries)
+                self.output.run([Action("hard_drop")])
+                self.drop_deadline = time.perf_counter() + 0.8
+            else:
+                self.drop_deadline = None
         if self.drop_state is not None:
             if sp is not None:          # the piece locked under us; abandon the rest of this move
                 log.warning("piece locked during a soft drop; dropping the rest of the move")
