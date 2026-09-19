@@ -25,6 +25,7 @@ from .cells import Cell
 
 Coord = tuple[int, int]  # (x, y) engine coordinates
 SPAWN_ROWS = {BOARD_ROWS - 1, BOARD_ROWS - 2, BOARD_ROWS - 3}  # y=19,18,17
+HUD_MIN_ROW = 14   # the Targeting widget covers roughly y >= 15; floating cells up there are not blocks
 SPAWN_COLS = {2, 3, 4, 5, 6, 7}
 PIECE_CELLS = {Cell.I, Cell.O, Cell.T, Cell.S, Cell.Z, Cell.J, Cell.L}
 SOLID = PIECE_CELLS | {Cell.GARBAGE}
@@ -174,9 +175,15 @@ class Tracker:
             return Spawn(spawned, to_board(locked), st.hold, list(st.queue), False, new_pieces,
                          fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2, fs.garbage.imminent)
         active, locked = split_spawned(cells, spawned, self.expected_locked)
-        # Locked cells must connect to the floor. Anything floating is an overlay misread: the GO!
-        # banner at the start, or the Targeting widget drawn over the top rows in battle mode.
-        locked = grounded(locked)
+        # Overlays can read as blocks: the GO! banner mid-board at the start, and the Targeting widget
+        # over the top rows in battle mode. Real stacks connect to the floor, EXCEPT that a line
+        # clear can leave a genuine floating remnant lower down, so after the first spawn only the
+        # widget's rows are filtered.
+        connected = grounded(locked)
+        if st.spawns == 0:
+            locked = connected
+        else:
+            locked = {c for c in locked if c in connected or c[1] < HUD_MIN_ROW}
         if self.expected_locked is not None and locked != self.expected_locked and not final:
             return None
         garbage = self.expected_locked is not None and locked != self.expected_locked

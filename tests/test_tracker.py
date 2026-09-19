@@ -112,3 +112,17 @@ def test_trust_expected_after_a_line_clear():
     ev = tr.update(render(lagging, FallingPiece.spawn("S", lagging), None, list("ZJLOIT")))
     assert ev and board_cells(ev.locked) == board_cells(truth) and not ev.garbage_arrived
     assert tr.trust_expected is False
+
+
+def test_floating_remnant_is_kept_but_hud_junk_is_dropped():
+    tr = Tracker(confirm_frames=1)
+    board = Board()
+    board.rows[0] = 0b0000001111
+    board.rows[2] = 0b0000000001          # a genuine floating block left by a line clear
+    tr.update(render(board, None, None, list("TSZJLO")))
+    tr.update(render(board, FallingPiece.spawn("T", board), None, list("SZJLOI")))   # first spawn
+    junk = Board(list(board.rows)); junk.rows[17] |= 1 << 8                            # widget misread
+    ev = tr.update(render(junk, FallingPiece.spawn("S", junk), None, list("ZJLOIT")))
+    cells = board_cells(ev.locked)
+    assert (0, 2) in cells          # remnant survives
+    assert (8, 17) not in cells     # HUD junk does not
