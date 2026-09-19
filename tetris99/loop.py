@@ -72,8 +72,10 @@ class Player:
     """Drives one game. Feed FrameStates via step(); it returns the actions it issued, if any."""
 
     def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
-                 weights: dict | None = None, trainer: bool = False, plan_len: int = 4, pace_s: float = 0.0):
+                 weights: dict | None = None, trainer: bool = False, plan_len: int = 4, pace_s: float = 0.0,
+                 hard_drop_only: bool = False):
         self.output = output
+        self.hard_drop_only = hard_drop_only
         self.pace_s = pace_s            # minimum seconds per piece ("human pace"); the wait is think time
         self.last_sent = 0.0
         self.weights = weights
@@ -122,7 +124,8 @@ class Player:
             self.bot.close()
         # Mid-game start: the bag is unknown, so speculation on unseen pieces is off.
         self.bot = ColdClear("".join([sp.piece] + sp.queue), threads=self.threads, max_nodes=self.max_nodes,
-                             board=sp.locked, hold=sp.hold, speculate=False, weights=self.weights)
+                             board=sp.locked, hold=sp.hold, speculate=False, weights=self.weights,
+                             hard_drop_only=self.hard_drop_only)
         log.info("bot launched: piece=%s hold=%s queue=%s", sp.piece, sp.hold, "".join(sp.queue))
 
     def _get_move(self, incoming: int = 0) -> Move | None:
@@ -622,6 +625,7 @@ def main() -> None:
     ap.add_argument("--trainer", action="store_true", help="coach: you play; press space to lay out Cold Clear's placements for all known pieces (implies --show)")
     ap.add_argument("--mode", choices=["normal", "tspin", "allclear"], default="normal", help="coach: starting mode")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
+    ap.add_argument("--no-softdrop", action="store_true", help="plan hard-drop-only placements (no tucks/spins): fewer failures at high gravity, less attack")
     ap.add_argument("--pace", type=float, default=0.0, help="live: minimum seconds per piece (human pace); 0 = as fast as possible")
     ap.add_argument("--think", type=int, default=50, help="synthetic only: ms the bot may think per piece (a real game gives it this during the drop animation)")
     ap.add_argument("--weights", help="JSON file overriding Cold Clear weights (see config/weights.json)")
@@ -646,7 +650,7 @@ def main() -> None:
         output = DryRunOutput()
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
                     think_ms=args.think if args.source == "synthetic" else (300 if args.trainer else 0),
-                    trainer=args.trainer, pace_s=args.pace)
+                    trainer=args.trainer, pace_s=args.pace, hard_drop_only=args.no_softdrop)
     player.mode = args.mode
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 

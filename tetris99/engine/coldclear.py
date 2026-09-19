@@ -212,8 +212,10 @@ class ColdClear:
     def __init__(self, queue: str = "", *, threads: int = 2, max_nodes: int = 100_000,
                  board: Board | None = None, hold: str | None = None, bag_remain: str | None = None,
                  speculate: bool = True, fast_weights: bool = False,
-                 weights: "dict | str | Path | None" = None, pcloop: int = 0):
-        """pcloop: 0 off, 1 CC_PC_FASTEST, 2 CC_PC_ATTACK (perfect-clear solver from an empty board)."""
+                 weights: "dict | str | Path | None" = None, pcloop: int = 0, hard_drop_only: bool = False):
+        """pcloop: 0 off, 1 CC_PC_FASTEST, 2 CC_PC_ATTACK (perfect-clear solver from an empty board).
+        hard_drop_only: plan only placements reachable by moving/rotating in the air and dropping:
+        no tucks or spins, so no soft drops, which are the least reliable inputs at high gravity."""
         if not valid_sequence(queue, hold):
             raise ValueError(f"impossible piece sequence for 7-bag: hold={hold} queue={queue}")
         L = lib()
@@ -223,6 +225,8 @@ class ColdClear:
         self.opts.max_nodes = max_nodes
         self.opts.speculate = speculate
         self.opts.pcloop = pcloop
+        if hard_drop_only:
+            self.opts.mode = 2   # CC_HARD_DROP_ONLY
         self.weights = CCWeights()
         (L.cc_fast_weights if fast_weights else L.cc_default_weights)(C.byref(self.weights))
         if weights is not None:
