@@ -11,18 +11,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 OUT = ROOT / "recordings" / "matches"; OUT.mkdir(parents=True, exist_ok=True)
-MODES = {"sd": [], "nosd": ["--no-softdrop"]}
+MODES = {"sd": [], "nosd": ["--no-softdrop"], "attack": ["--no-survival"], "random": ["--targeting", "none"]}
+FIRST_PRESS = {"hold": ("hold.py", ["A", "1.3"]), "tap": ("hold.py", ["A", "0.15"])}
 
 
 def pieces(log: Path) -> int:
     return sum(1 for l in open(log, errors="ignore") if "INFO #" in l)
 
 
-def play(tag: str, extra: list[str]) -> dict:
+def play(tag: str, extra: list[str], press: str = "hold") -> dict:
     log = OUT / f"{tag}.log"
     bot = None
     for attempt in range(2):
-        subprocess.run([PY, str(ROOT / "tools/hold.py"), "A", "1.3"], cwd=ROOT, check=False)
+        script, a = FIRST_PRESS[press]
+        subprocess.run([PY, str(ROOT / "tools" / script), *a], cwd=ROOT, check=False)
+        press = "hold"
         bot = subprocess.Popen([PY, "-u", "-m", "tetris99.loop", "--source", "6", "--output", "serial", "--pace", "0.7", *extra],
                                cwd=ROOT, stdout=open(log, "w"), stderr=subprocess.STDOUT)
         t0 = time.time()
@@ -57,9 +60,11 @@ def play(tag: str, extra: list[str]) -> dict:
 
 
 if __name__ == "__main__":
-    order = sys.argv[1:] or ["nosd", "sd", "nosd", "sd"]
+    args = sys.argv[1:]
+    from_menu = "--from-menu" in args          # first match: tap A on the TETRIS 99 tile instead of holding Play Again
+    order = [a for a in args if not a.startswith("--")] or ["sd", "sd", "sd"]
     stamp = time.strftime("%H%M")
     for i, mode in enumerate(order, 1):
-        r = play(f"{stamp}_{i}_{mode}", MODES[mode])
+        r = play(f"{stamp}_{i}_{mode}", MODES[mode], press="tap" if (from_menu and i == 1) else "hold")
         print(r, flush=True)
     print("ALL DONE", flush=True)
