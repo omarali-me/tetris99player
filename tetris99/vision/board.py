@@ -64,27 +64,48 @@ def classify_hsv(h: np.ndarray, s: np.ndarray, v: np.ndarray, v_std: np.ndarray,
 
 
 # ---------------------------------------------------------------- board grid
+# Five sample points per cell, in the lower half of the block where its colour is pure (the top half
+# carries a glossy highlight). Battle mode draws moving overlays across the board (the yellow attack
+# lines fan out from the bottom-right corner, sparkles, the danger glow); a thin line can spoil one
+# or two points but not the vote.
+SAMPLE_OFFSETS = [(0, 0), (-13, 8), (13, 8), (-7, 14), (7, 14)]
+VOTES_NEEDED = 2
+
+
 class _GridSampler:
-    """Precomputed pixel indices for the 200 cell patches of a layout."""
+    """Precomputed pixel indices for the sample patches of every cell of a layout."""
 
     def __init__(self, layout: Layout):
         self.layout = layout
         ys, xs = [], []
         for r in range(BOARD_ROWS):
             for c in range(BOARD_COLS):
-                x, y = layout.cell_center(r, c)
-                yy, xx = np.mgrid[y - PATCH : y + PATCH + 1, x - PATCH : x + PATCH + 1]
-                ys.append(yy.ravel()); xs.append(xx.ravel())
-        self.ys = np.array(ys); self.xs = np.array(xs)      # (200, 49)
+                cx, cy = layout.cell_center(r, c)
+                for dx, dy in SAMPLE_OFFSETS:
+                    yy, xx = np.mgrid[cy + dy - PATCH : cy + dy + PATCH + 1, cx + dx - PATCH : cx + dx + PATCH + 1]
+                    ys.append(yy.ravel()); xs.append(xx.ravel())
+        self.ys = np.array(ys); self.xs = np.array(xs)      # (200 * 5, 49)
 
-    def medians(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        pix = frame[self.ys, self.xs]                        # (200, 49, 3) BGR
+    def medians(self, frame: np.ndarray):
+        pix = frame[self.ys, self.xs]                        # (1000, 49, 3) BGR
         hsv = cv2.cvtColor(pix.reshape(-1, 1, 3), cv2.COLOR_BGR2HSV).reshape(pix.shape)
-        med = np.median(hsv, axis=1).astype(np.int32)        # (200, 3)
+        med = np.median(hsv, axis=1).astype(np.int32)        # (1000, 3)
         vals = hsv[:, :, 2].astype(np.int32)
         v_std = vals.astype(np.float32).std(axis=1)
         v_flat = (np.abs(vals - med[:, 2:3]) <= 10).mean(axis=1)
         return med[:, 0], med[:, 1], med[:, 2], v_std, v_flat
+
+
+def vote(codes: np.ndarray) -> np.ndarray:
+    """codes: (cells, samples) classification codes. A cell takes a solid code (garbage or a piece)
+    when at least VOTES_NEEDED samples agree on it; ghost needs the same; otherwise it is empty."""
+    n_codes = len(CODE_CELLS)
+    counts = np.zeros((codes.shape[0], n_codes), np.int16)
+    for k in range(codes.shape[1]):
+        counts[np.arange(codes.shape[0]), codes[:, k]] += 1
+    counts[:, 0] = 0                                         # empty never wins by count alone
+    best = counts.argmax(axis=1)
+    return np.where(counts.max(axis=1) >= VOTES_NEEDED, best, 0).astype(np.int8)
 
 
 _samplers: dict[int, _GridSampler] = {}
@@ -99,7 +120,8 @@ def _sampler(layout: Layout) -> _GridSampler:
 
 def read_grid(frame: np.ndarray, layout: Layout) -> list[list[Cell]]:
     h, s, v, v_std, v_flat = _sampler(layout).medians(frame)
-    codes = classify_hsv(h, s, v, v_std, v_flat).reshape(BOARD_ROWS, BOARD_COLS)
+    per_sample = classify_hsv(h, s, v, v_std, v_flat).reshape(BOARD_ROWS * BOARD_COLS, len(SAMPLE_OFFSETS))
+    codes = vote(per_sample).reshape(BOARD_ROWS, BOARD_COLS)
     return [[CODE_CELLS[c] for c in row] for row in codes]
 
 
