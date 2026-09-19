@@ -304,6 +304,14 @@ class Player:
                 self.plan_steps, self.laid_done = [], 0
 
     # ------------------------------------------------------------------ execution
+    def _target_filled(self, fs: FrameState) -> bool:
+        """True when any of the last move's target cells shows a block on screen."""
+        if not self.target:
+            return False
+        from .vision.cells import Cell
+        solid = {Cell.I, Cell.O, Cell.T, Cell.S, Cell.Z, Cell.J, Cell.L, Cell.GARBAGE}
+        return any(y < 20 and fs.grid[19 - y][x] in solid for x, y in self.target[1])
+
     def _arm_watchdog(self, sent: list[Action]) -> None:
         if getattr(self.output, "live", False):
             self.drop_deadline = time.perf_counter() + self.output.duration(sent) + 0.7
@@ -373,7 +381,13 @@ class Player:
         if sp is not None:
             self.drop_deadline = None
         elif self.drop_deadline is not None and self.drop_state is None and time.perf_counter() > self.drop_deadline:
-            if self.drop_retries < 3:
+            # A late spawn is normal when garbage is rising (its animation delays the next piece), so
+            # only re-send when the screen shows the piece did NOT land: every target cell still empty
+            # and the piece still visible somewhere else. Moves that clear lines are left alone.
+            landed = self._target_filled(fs)
+            if landed or self.last_cleared > 0 or not self.tracker.state.active:
+                self.drop_deadline = None
+            elif self.drop_retries < 3:
                 self.drop_retries += 1
                 self.redrops += 1
                 log.warning("no new piece %.1f s after the hard drop: re-sending it (retry %d)", 0.7, self.drop_retries)
@@ -620,10 +634,15 @@ def main() -> None:
     n = 0
     t_report, n_report = t0, 0
     last_progress, last_pieces, stall_logged = t0, 0, False
+    seen_divergences = 0
     try:
         for frame, fs in frames:
             n += 1
             player.step(fs)
+            if frame is not None and player.divergences != seen_divergences:
+                seen_divergences = player.divergences
+                import cv2
+                cv2.imwrite(f"recordings/diverge_{int(time.time() * 10)}.png", frame)
             # stall detector: in game mode a spawn should come every second or two
             if player.pieces != last_pieces:
                 last_pieces, last_progress, stall_logged = player.pieces, time.perf_counter(), False
