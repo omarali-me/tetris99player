@@ -20,3 +20,14 @@ def test_player_survives_with_garbage():
     assert env.game.pieces_placed == 80
     assert player.pieces == 80
     assert env.game.board.height() < 16
+
+
+def test_garbage_rows_detection():
+    from tetris99.engine.board import Board
+    from tetris99.loop import garbage_rows
+    exp = Board(); exp.rows[0] = 0b0000111111; exp.rows[1] = 0b11
+    seen = Board(list(exp.rows)); seen.add_garbage(3, hole_col=4)
+    assert garbage_rows(exp, seen) == 3
+    assert garbage_rows(exp, exp) == 0
+    wrong = Board(list(seen.rows)); wrong.rows[5] |= 1 << 7     # a misplaced cell as well
+    assert garbage_rows(exp, wrong) == 0

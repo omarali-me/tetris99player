@@ -24,6 +24,15 @@ from .vision.tracker import Spawn, Tracker, board_cells, to_board
 log = logging.getLogger("loop")
 
 
+def garbage_rows(expected: Board, seen: Board) -> int:
+    """If `seen` is `expected` pushed up by k garbage rows (each full except one hole), return k."""
+    for k in range(1, 13):
+        if seen.rows[k:] == expected.rows[: len(expected.rows) - k] and all(
+                bin(r).count("1") == 9 for r in seen.rows[:k]):
+            return k
+    return 0
+
+
 class Output(Protocol):
     def run(self, actions: list[Action]) -> None: ...
 
@@ -85,6 +94,8 @@ class Player:
         # for it. That spawn is ours to ignore: (piece kind, locked board before our placement).
         self.own_hold_spawn: tuple[str, set] | None = None
         self.divergences = 0
+        self.garbage_events = 0
+        self.fresh_think_ms = 90
         # closed-loop execution: segments of taps separated by soft drops that end when the piece lands
         self.segments: list[list[Action]] = []
         self.drop_state: dict | None = None
@@ -94,6 +105,7 @@ class Player:
         self.count_pending_garbage = True
 
     def _launch(self, sp: Spawn) -> None:
+        self._fresh = True   # a new bot has no search tree yet: let it think briefly before asking
         if self.bot:
             self.bot.close()
         # Mid-game start: the bag is unknown, so speculation on unseen pieces is off.
@@ -109,6 +121,9 @@ class Player:
         assert self.bot
         if self.think_ms:
             time.sleep(self.think_ms / 1000)
+        elif getattr(self, "_fresh", False) and getattr(self.output, "live", False):
+            time.sleep(self.fresh_think_ms / 1000)   # ~depth 5-6 instead of depth 1 after a relaunch
+        self._fresh = False
         self.bot.request_move(incoming)
         deadline = time.perf_counter() + 2.0
         while True:
@@ -150,10 +165,15 @@ class Player:
                 # A reset with a request in flight can hand back a stale move; relaunching is race-free.
                 if self.expected is not None:
                     seen, exp = board_cells(sp.locked), board_cells(self.expected)
-                    self.divergences += 1
-                    log.info("DIVERGED after %s [%s]: missing=%s extra=%s cleared=%d",
-                             self.last_kind, " ".join(a.kind for a in self.last_actions),
-                             sorted(exp - seen), sorted(seen - exp), self.last_cleared)
+                    k = garbage_rows(self.expected, sp.locked)
+                    if k:
+                        self.garbage_events += 1
+                        log.info("garbage +%d lines (placement was correct)", k)
+                    else:
+                        self.divergences += 1
+                        log.info("DIVERGED after %s [%s]: missing=%s extra=%s cleared=%d",
+                                 self.last_kind, " ".join(a.kind for a in self.last_actions),
+                                 sorted(exp - seen)[:12], sorted(seen - exp)[:12], self.last_cleared)
                 (log.debug if self.trainer else log.info)("board differs from prediction (garbage or misplaced piece): relaunching bot")
                 self._launch(sp)
 
