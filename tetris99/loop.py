@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Iterable, Protocol
 
-from .config import Layout, Settings, find_serial_port
+from .config import CONFIG_DIR, Layout, Settings, find_serial_port
 from .engine.board import Board
 from .engine.coach import MODES, map_plan, plan_from, rows_to_original
 from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights, valid_sequence
@@ -61,6 +61,9 @@ class SerialOutput:
         """Seconds the Arduino needs to play these (taps only)."""
         return len(actions) * (self.sc.TAP_MS + self.sc.GAP_MS) / 1000
 
+    def targeting(self, mode: str) -> None:
+        self.ctl.set_targeting(mode)
+
     def down(self, pressed: bool) -> None:
         from .control.protocol import Hat, Op
         self.ctl._send(Op.HAT, int(Hat.DOWN if pressed else Hat.CENTER))
@@ -73,9 +76,19 @@ class Player:
 
     def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
                  weights: dict | None = None, trainer: bool = False, plan_len: int = 4, pace_s: float = 0.0,
-                 hard_drop_only: bool = False):
+                 hard_drop_only: bool = False, targeting: str | None = None,
+                 danger_height: int = 10, safe_height: int = 6, survival_weights: dict | None = None):
         self.output = output
         self.hard_drop_only = hard_drop_only
+        self.targeting = targeting              # set once at the first piece of a match
+        self.targeting_set = False
+        # Height-aware strategy: attack weights (T-spins) while the stack is low, survival weights
+        # (clear lines, no setups) once it reaches danger_height, back to attack at safe_height.
+        self.attack_weights = weights
+        self.survival_weights = survival_weights
+        self.danger_height, self.safe_height = danger_height, safe_height
+        self.survival = False
+        self.strategy_switches = 0
         self.pace_s = pace_s            # minimum seconds per piece ("human pace"); the wait is think time
         self.last_sent = 0.0
         self.weights = weights
@@ -121,6 +134,21 @@ class Player:
         self.last_kind = ""
         self.last_cleared = 0
         self.count_pending_garbage = True
+
+    def _update_strategy(self, height: int) -> bool:
+        """Pick attack or survival weights from the stack height, with hysteresis. True if it changed."""
+        if self.survival_weights is None:
+            return False
+        if not self.survival and height >= self.danger_height:
+            self.survival = True
+        elif self.survival and height <= self.safe_height:
+            self.survival = False
+        else:
+            return False
+        self.weights = self.survival_weights if self.survival else self.attack_weights
+        self.strategy_switches += 1
+        log.info("stack height %d: switching to %s weights", height, "SURVIVAL" if self.survival else "attack")
+        return True
 
     def _launch(self, sp: Spawn) -> None:
         self._fresh = True   # a new bot has no search tree yet: let it think briefly before asking
@@ -179,6 +207,13 @@ class Player:
             self.tracker.trust_expected = self.last_cleared > 0
             log.debug("spawn of %s during our own move: ignored", sp.piece)
             return None
+        if self.targeting and not self.targeting_set and hasattr(self.output, "targeting"):
+            self.output.targeting(self.targeting)
+            self.targeting_set = True
+            log.info("targeting set to %s", self.targeting)
+        if self._update_strategy(sp.locked.height()) and self.bot is not None:
+            self._launch(sp)          # Cold Clear cannot change weights in place; relaunch with the new set
+            self.expected = None
         if self.bot is None:
             self._launch(sp)
         else:
@@ -706,6 +741,11 @@ def main() -> None:
     ap.add_argument("--trainer", action="store_true", help="coach: you play; press space to lay out Cold Clear's placements for all known pieces (implies --show)")
     ap.add_argument("--mode", choices=["normal", "tspin", "allclear"], default="normal", help="coach: starting mode")
     ap.add_argument("--garbage-every", type=int, default=15, help="synthetic only: 2 garbage lines every N pieces")
+    ap.add_argument("--targeting", choices=["kos", "random", "badges", "attackers", "none"], default="kos",
+                    help="live: Tetris 99 targeting mode set at the first piece (right stick); default K.O.s")
+    ap.add_argument("--danger-height", type=int, default=10, help="stack height at which the bot stops hunting T-spins and just clears")
+    ap.add_argument("--safe-height", type=int, default=6, help="stack height at which it goes back to attacking")
+    ap.add_argument("--no-survival", action="store_true", help="always use the attack weights")
     ap.add_argument("--save-softdrop", action="store_true", help="debug: save frames while a soft drop is being held")
     ap.add_argument("--no-softdrop", action="store_true", help="plan hard-drop-only placements (no tucks/spins): fewer failures at high gravity, less attack")
     ap.add_argument("--pace", type=float, default=0.0, help="live: minimum seconds per piece (human pace); 0 = as fast as possible")
@@ -732,7 +772,10 @@ def main() -> None:
         output = DryRunOutput()
     player = Player(output, threads=args.threads, max_nodes=args.max_nodes, weights=weights,
                     think_ms=args.think if args.source == "synthetic" else (300 if args.trainer else 0),
-                    trainer=args.trainer, pace_s=args.pace, hard_drop_only=args.no_softdrop)
+                    trainer=args.trainer, pace_s=args.pace, hard_drop_only=args.no_softdrop,
+                    targeting=None if args.targeting == "none" else args.targeting,
+                    danger_height=args.danger_height, safe_height=args.safe_height,
+                    survival_weights=None if args.no_survival else load_weights(str(CONFIG_DIR / "weights_survival.json")))
     player.mode = args.mode
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 

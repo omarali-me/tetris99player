@@ -1,0 +1,10 @@
+{
+  "_about": "Used when the stack is in the upper half. No T-spin hunting: get the stack down. Every clear is rewarded, height is punished hard, holes more so, and a T may be spent without spinning.",
+  "height": -90, "top_half": -320, "top_quarter": -950,
+  "cavity_cells": -220, "covered_cells": -25, "bumpiness": -30,
+  "clear1": 70, "clear2": 140, "clear3": 220, "clear4": 480,
+  "tspin1": 110, "tspin2": 300, "tspin3": 450, "mini_tspin1": 20, "mini_tspin2": 60,
+  "tslot": [0, 0, 0, 0], "wasted_t": 0,
+  "b2b_clear": 40, "back_to_back": 10, "combo_garbage": 220,
+  "well_depth": 40, "jeopardy": -20
+}

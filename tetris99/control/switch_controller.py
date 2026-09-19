@@ -84,6 +84,17 @@ class SwitchController:
     def das_left(self) -> None: self.hat_hold(Hat.LEFT, DAS_MS)
     def das_right(self) -> None: self.hat_hold(Hat.RIGHT, DAS_MS)
 
+    # Tetris 99 targeting is chosen with the right stick: up K.O.s, left Random, right Badges, down Attackers.
+    TARGETING = {"kos": (128, 0), "random": (0, 128), "badges": (255, 128), "attackers": (128, 255)}
+
+    def set_targeting(self, mode: str) -> None:
+        from .protocol import stick_arg
+        x, y = self.TARGETING[mode]
+        self._send(Op.RSTICK, stick_arg(x, y))
+        self._send(Op.WAIT, 180)
+        self._send(Op.RSTICK, stick_arg(128, 128))
+        self._send(Op.WAIT, GAP_MS)
+
     def close(self) -> None:
         self.release_all()
         self.ser.close()

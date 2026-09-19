@@ -105,3 +105,35 @@ def test_own_hold_spawn_during_a_soft_drop_is_not_treated_as_a_lock():
     player.step(render(board, FallingPiece("S", 0, 4, 10), "T", list("ZJLOIT")))
     assert player.drop_state is not None, "the hold's own spawn must not abandon the soft drop"
     assert ["up"] not in out.sent
+
+
+def test_strategy_switches_with_hysteresis():
+    out = FakeLive()
+    player = Player(out, threads=1, max_nodes=1000, survival_weights={"tslot": [0, 0, 0, 0]}, danger_height=10, safe_height=6)
+    assert not player._update_strategy(5) and not player.survival
+    assert not player._update_strategy(9) and not player.survival        # still below the danger line
+    assert player._update_strategy(10) and player.survival                # crossed it
+    assert player.weights == {"tslot": [0, 0, 0, 0]}
+    assert not player._update_strategy(8) and player.survival             # hysteresis: stays in survival
+    assert player._update_strategy(6) and not player.survival             # safe again
+    assert player.weights is None
+    player.close()
+
+
+def test_targeting_is_sent_once_at_the_first_piece():
+    class Out(FakeLive):
+        def __init__(self): super().__init__(); self.targets = []
+        def targeting(self, mode): self.targets.append(mode)
+    from tetris99.engine.board import Board
+    from tetris99.engine.piece import FallingPiece
+    from tetris99.vision.synthetic import render
+    out = Out()
+    player = Player(out, threads=1, max_nodes=2000, targeting="kos")
+    board = Board()
+    for _ in range(3):
+        player.step(render(board, None, None, list("TSZJLO")))
+    frame = render(board, FallingPiece.spawn("T", board), None, list("SZJLOI"))
+    for _ in range(10):
+        player.step(frame)
+    player.close()
+    assert out.targets == ["kos"]
