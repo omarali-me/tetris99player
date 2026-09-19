@@ -129,6 +129,8 @@ class Player:
         # effect of that move (the hold swap), never a fresh piece: deciding again would put every
         # later move one piece out of step.
         self.busy_until = 0.0
+        self.early_request = False            # ask Cold Clear as soon as a spawn is seen, while the vote runs
+        self.early_requested = False          # a request is outstanding; the next poll belongs to it
         self.pending: Spawn | None = None     # a spawn waiting for its decision time (pace)
         self.decide_at = 0.0
         self.resyncs = 0
@@ -162,6 +164,7 @@ class Player:
 
     def _launch(self, sp: Spawn) -> None:
         self._fresh = True   # a new bot has no search tree yet: let it think briefly before asking
+        self.early_requested = False   # any outstanding request died with the old bot
         if self.bot:
             self.bot.close()
         # Mid-game start: the bag is unknown, so speculation on unseen pieces is off.
@@ -176,12 +179,15 @@ class Player:
         we actually need the answer. `think_ms` (synthetic mode) sleeps first to stand in for the
         drop/clear animation time a real game gives the bot."""
         assert self.bot
-        if self.think_ms:
-            time.sleep(self.think_ms / 1000)
-        elif getattr(self, "_fresh", False) and getattr(self.output, "live", False):
-            time.sleep(self.fresh_think_ms / 1000)   # ~depth 5-6 instead of depth 1 after a relaunch
+        if self.early_requested:
+            self.early_requested = False             # already asked when the spawn was first seen
+        else:
+            if self.think_ms:
+                time.sleep(self.think_ms / 1000)
+            elif getattr(self, "_fresh", False) and getattr(self.output, "live", False):
+                time.sleep(self.fresh_think_ms / 1000)   # ~depth 5-6 instead of depth 1 after a relaunch
+            self.bot.request_move(incoming)
         self._fresh = False
-        self.bot.request_move(incoming)
         deadline = time.perf_counter() + 2.0
         while True:
             status, move = self.bot.poll_move(self.plan_len)
@@ -203,6 +209,7 @@ class Player:
             if self.bot:
                 self.bot.close()
                 self.bot = None
+            self.early_requested = False
             self.expected = None
             self.target = None
             self.plan = []
@@ -514,6 +521,13 @@ class Player:
             return None
         sp = self.tracker.update(fs)
         live = getattr(self.output, "live", False)
+        # Overlap Cold Clear's answer with the spawn vote: a request means "give me your next move",
+        # which is the same question whichever frame it is asked on, so ask as early as possible.
+        if (live and self.early_request and not self.early_requested and self.bot is not None
+                and not getattr(self, "_fresh", False) and self.tracker._collect is not None
+                and self.drop_state is None and time.perf_counter() >= self.busy_until):
+            self.bot.request_move(fs.garbage.imminent + fs.garbage.pending + fs.garbage.queued // 2)
+            self.early_requested = True
         if sp is not None:
             self.drop_deadline = None
         elif self.drop_deadline is not None and self.drop_state is None and time.perf_counter() > self.drop_deadline:
@@ -758,6 +772,8 @@ def main() -> None:
     ap.add_argument("--danger-height", type=int, default=10, help="stack height at which the bot stops hunting T-spins and just clears")
     ap.add_argument("--safe-height", type=int, default=6, help="stack height at which it goes back to attacking")
     ap.add_argument("--no-survival", action="store_true", help="always use the attack weights")
+    ap.add_argument("--early-request", action="store_true", help="live: ask Cold Clear as soon as a spawn is seen, in parallel with the spawn vote (~55 ms per piece)")
+    ap.add_argument("--settle-frames", type=int, default=4, help="live: extra frames voted at each spawn (4 = ~83 ms; fewer is faster, less spark-proof)")
     ap.add_argument("--tap-ms", type=int, default=34, help="live: tap and gap length in ms (34 = 2 frames; 25 is faster, less proven)")
     ap.add_argument("--no-merge", action="store_true", help="do not press rotation and sideways taps simultaneously")
     ap.add_argument("--save-softdrop", action="store_true", help="debug: save frames while a soft drop is being held")
@@ -794,6 +810,9 @@ def main() -> None:
                     danger_height=args.danger_height, safe_height=args.safe_height,
                     survival_weights=None if args.no_survival else load_weights(str(CONFIG_DIR / "weights_survival.json")),
                     merge_inputs=not args.no_merge)
+    player.early_request = args.early_request
+    if getattr(output, "live", False):
+        player.tracker.settle_frames = args.settle_frames
     player.mode = args.mode
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 

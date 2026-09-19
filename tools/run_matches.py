@@ -14,7 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 OUT = ROOT / "recordings" / "matches"; OUT.mkdir(parents=True, exist_ok=True)
-MODES = {"sd": [], "nosd": ["--no-softdrop"], "attack": ["--no-survival"], "random": ["--targeting", "none"]}
+MODES = {"fast": ["--early-request", "--settle-frames", "2", "--tap-ms", "25"],
+         "early": ["--early-request"],
+         "sd": [], "nosd": ["--no-softdrop"], "attack": ["--no-survival"], "random": ["--targeting", "none"]}
 FIRST_PRESS = {"hold": ("hold.py", ["A", "1.3"]), "tap": ("hold.py", ["A", "0.15"])}
 
 
