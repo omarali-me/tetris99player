@@ -1,6 +1,7 @@
 """Play a series of online matches back to back and keep the evidence.
 
     .venv/bin/python tools/run_matches.py nosd sd nosd sd        # modes to play, in order
+    .venv/bin/python tools/run_matches.py --show --from-menu sd sd   # with a live window, starting from the main menu
 
 Start it while the Switch shows a results screen with "A: Play Again". For every match it holds A,
 runs the bot until 30 s pass without a new piece, stops it, and saves the log and the results
@@ -19,6 +20,9 @@ def pieces(log: Path) -> int:
     return sum(1 for l in open(log, errors="ignore") if "INFO #" in l)
 
 
+SHOW = False
+
+
 def play(tag: str, extra: list[str], press: str = "hold") -> dict:
     log = OUT / f"{tag}.log"
     bot = None
@@ -26,7 +30,8 @@ def play(tag: str, extra: list[str], press: str = "hold") -> dict:
         script, a = FIRST_PRESS[press]
         subprocess.run([PY, str(ROOT / "tools" / script), *a], cwd=ROOT, check=False)
         press = "hold"
-        bot = subprocess.Popen([PY, "-u", "-m", "tetris99.loop", "--source", "6", "--output", "serial", "--pace", "0.7", *extra],
+        bot = subprocess.Popen([PY, "-u", "-m", "tetris99.loop", "--source", "6", "--output", "serial", "--pace", "0.7",
+                                *(["--show"] if SHOW else []), *extra],
                                cwd=ROOT, stdout=open(log, "w"), stderr=subprocess.STDOUT)
         t0 = time.time()
         while time.time() - t0 < 200 and bot.poll() is None and "bot launched" not in log.read_text(errors="ignore"):
@@ -61,6 +66,7 @@ def play(tag: str, extra: list[str], press: str = "hold") -> dict:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    SHOW = "--show" in args                      # open the bot's live window (capture feed + what it sees)
     from_menu = "--from-menu" in args          # first match: tap A on the TETRIS 99 tile instead of holding Play Again
     order = [a for a in args if not a.startswith("--")] or ["sd", "sd", "sd"]
     stamp = time.strftime("%H%M")
