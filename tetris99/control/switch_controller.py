@@ -27,8 +27,20 @@ class SwitchController:
         self.ser.write(encode(op, arg))
 
     def ping(self) -> bool:
-        self._send(Op.PING)
-        return self.ser.read(1) == bytes([Op.PING])
+        """Ping, re-aligning the 3-byte framing if needed. A stray byte on the wire (the adapter's
+        port being opened or closed by another tool) shifts every later command; sending single
+        padding bytes until the ping is answered restores alignment."""
+        self.ser.timeout = 0.15
+        for _ in range(4):
+            self.ser.reset_input_buffer()
+            self._send(Op.PING)
+            if self.ser.read(1) == bytes([Op.PING]):
+                self.ser.timeout = 1
+                return True
+            self.ser.write(b"\x00")
+            time.sleep(0.03)
+        self.ser.timeout = 1
+        return False
 
     def release_all(self) -> None:
         self._send(Op.RELEASE)
