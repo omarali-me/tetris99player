@@ -1,0 +1,12 @@
+{
+  "_about": "'Clean' strategy: no T-spin hunting. Clear lines, keep the board low and flat, play fast. Used for the whole match (run with --no-survival), normally with --no-softdrop.",
+  "height": -70, "top_half": -300, "top_quarter": -900,
+  "cavity_cells": -260, "cavity_cells_sq": -6, "covered_cells": -30, "overhang_cells": -60,
+  "bumpiness": -32, "bumpiness_sq": -10, "row_transitions": -8,
+  "well_depth": 25, "max_well_depth": 6,
+  "clear1": 70, "clear2": 150, "clear3": 240, "clear4": 450,
+  "tspin1": 100, "tspin2": 250, "tspin3": 350, "mini_tspin1": 40, "mini_tspin2": 100,
+  "tslot": [0, 0, 0, 0], "wasted_t": 0,
+  "b2b_clear": 0, "back_to_back": 0, "combo_garbage": 220,
+  "move_time": -6, "jeopardy": -25
+}

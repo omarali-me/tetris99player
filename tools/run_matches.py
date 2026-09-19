@@ -15,7 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 OUT = ROOT / "recordings" / "matches"; OUT.mkdir(parents=True, exist_ok=True)
 # 25 ms taps were tried in battle mode on 2026-09-19 and whole moves went missing; 34 ms is the floor.
-MODES = {"fast": ["--early-request", "--settle-frames", "2"],
+_FAST = ["--early-request", "--settle-frames", "2", "--pace", "0"]   # a later --pace overrides the runner's default
+MODES = {"fast": _FAST,
+         # no T-spins: clear lines, stay low, hard drops only, full speed
+         "clean": ["--weights", "config/weights_clean.json", "--no-survival", "--no-softdrop", *_FAST],
+         # same personality but allowed to soft-drop (tucks)
+         "cleansd": ["--weights", "config/weights_clean.json", "--no-survival", *_FAST],
          "early": ["--early-request"],
          "sd": [], "nosd": ["--no-softdrop"], "attack": ["--no-survival"], "random": ["--targeting", "none"]}
 FIRST_PRESS = {"hold": ("hold.py", ["A", "1.3"]), "tap": ("hold.py", ["A", "0.15"])}
