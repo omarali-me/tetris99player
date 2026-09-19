@@ -78,9 +78,12 @@ def find_serial_port(requested: str = "auto") -> str:
         return requested
     from serial.tools import list_ports
     ports = list(list_ports.comports())
-    for p in ports:
-        if p.device.startswith(("/dev/ttyUSB", "/dev/ttyACM", "COM")):
-            return p.device
+    # Prefer the USB-TTL adapter (ttyUSB*): it is the link that stays on the PC once the board's own
+    # USB cable goes to the Switch. The board's CDC port (ttyACM*) is the fallback for bench tests.
+    for prefix in ("/dev/ttyUSB", "/dev/ttyACM", "COM"):
+        for p in sorted(ports, key=lambda p: p.device):
+            if p.device.startswith(prefix):
+                return p.device
     usb = [p for p in ports if not p.device.startswith("/dev/ttyS")]  # ttyS* are legacy motherboard UARTs
     seen = ", ".join(f"{p.device} ({p.description})" for p in usb) or "none"
     raise FileNotFoundError(
