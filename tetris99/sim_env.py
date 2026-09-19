@@ -44,6 +44,10 @@ class SimEnv:
                 else:
                     g.hold, nxt = cur, g.hold
                 self.piece = FallingPiece.spawn(nxt, g.board)
+            elif "+" in k:
+                move, rot = k.split("+")
+                self.piece.shift(g.board, -1 if move == "left" else 1)
+                self.piece.rotate(g.board, cw=(rot == "cw"))
             elif k == "cw": self.piece.rotate(g.board, cw=True)
             elif k == "ccw": self.piece.rotate(g.board, cw=False)
             elif k == "left": self.piece.shift(g.board, -1)

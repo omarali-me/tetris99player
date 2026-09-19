@@ -16,7 +16,7 @@ from .config import CONFIG_DIR, Layout, Settings, find_serial_port
 from .engine.board import Board
 from .engine.coach import MODES, map_plan, plan_from, rows_to_original
 from .engine.coldclear import ColdClear, Move, PlanStep, PollStatus, load_weights, valid_sequence
-from .engine.executor import Action, compile_move
+from .engine.executor import Action, compile_move, merge_simultaneous
 from .vision.board import FrameState, read_frame
 from .vision.tracker import Spawn, Tracker, board_cells, to_board
 
@@ -67,7 +67,7 @@ class SerialOutput:
 
     def duration(self, actions: list[Action]) -> float:
         """Seconds the Arduino needs to play these (taps only)."""
-        return len(actions) * (self.sc.TAP_MS + self.sc.GAP_MS) / 1000
+        return len(actions) * (self.sc.TAP_MS + self.sc.GAP_MS) / 1000 + 0.012 * len(actions)
 
     def targeting(self, mode: str) -> None:
         self.ctl.set_targeting(mode)
@@ -85,8 +85,10 @@ class Player:
     def __init__(self, output: Output, threads: int = 2, max_nodes: int = 100_000, think_ms: int = 0,
                  weights: dict | None = None, trainer: bool = False, plan_len: int = 4, pace_s: float = 0.0,
                  hard_drop_only: bool = False, targeting: str | None = None,
-                 danger_height: int = 10, safe_height: int = 6, survival_weights: dict | None = None):
+                 danger_height: int = 10, safe_height: int = 6, survival_weights: dict | None = None,
+                 merge_inputs: bool = True):
         self.output = output
+        self.merge_inputs = merge_inputs   # press rotation + sideways tap together where provably safe
         self.hard_drop_only = hard_drop_only
         self.targeting = targeting              # set once at the first piece of a match
         self.targeting_set = False
@@ -282,6 +284,8 @@ class Player:
                 log.error("rejected again (%s); skipping this piece", e2)
                 return None
 
+        if self.merge_inputs:
+            actions = merge_simultaneous(sp.locked, kind, actions)
         if move.hold:
             self.own_hold_spawn = (kind, board_cells(sp.locked))
         self.target = (kind, list(final.cells()), move.hold)
@@ -754,6 +758,8 @@ def main() -> None:
     ap.add_argument("--danger-height", type=int, default=10, help="stack height at which the bot stops hunting T-spins and just clears")
     ap.add_argument("--safe-height", type=int, default=6, help="stack height at which it goes back to attacking")
     ap.add_argument("--no-survival", action="store_true", help="always use the attack weights")
+    ap.add_argument("--tap-ms", type=int, default=34, help="live: tap and gap length in ms (34 = 2 frames; 25 is faster, less proven)")
+    ap.add_argument("--no-merge", action="store_true", help="do not press rotation and sideways taps simultaneously")
     ap.add_argument("--save-softdrop", action="store_true", help="debug: save frames while a soft drop is being held")
     ap.add_argument("--no-softdrop", action="store_true", help="plan hard-drop-only placements (no tucks/spins): fewer failures at high gravity, less attack")
     ap.add_argument("--pace", type=float, default=0.0, help="live: minimum seconds per piece (human pace); 0 = as fast as possible")
@@ -764,6 +770,9 @@ def main() -> None:
     weights = load_weights(args.weights) if args.weights else None
     logging.basicConfig(level=logging.DEBUG if args.v else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    if args.tap_ms != 34:
+        from .control.switch_controller import set_tap_timing
+        set_tap_timing(args.tap_ms)
     layout = Layout.load()
     frames, src = frame_states(args.source, layout, args.garbage_every)
 
@@ -783,7 +792,8 @@ def main() -> None:
                     trainer=args.trainer, pace_s=args.pace, hard_drop_only=args.no_softdrop,
                     targeting=None if args.targeting == "none" else args.targeting,
                     danger_height=args.danger_height, safe_height=args.safe_height,
-                    survival_weights=None if args.no_survival else load_weights(str(CONFIG_DIR / "weights_survival.json")))
+                    survival_weights=None if args.no_survival else load_weights(str(CONFIG_DIR / "weights_survival.json")),
+                    merge_inputs=not args.no_merge)
     player.mode = args.mode
     view = LiveView(layout, player) if args.show and args.source != "synthetic" else None
 

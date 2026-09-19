@@ -19,6 +19,14 @@ SOFT_DROP_MS_PER_ROW = 55   # soft drop is 20x gravity: ~50 ms/row at level 1, f
 SOFT_DROP_MARGIN_MS = 150   # covers input latency; over-holding after landing is harmless
 
 
+def set_tap_timing(tap_ms: int, gap_ms: int | None = None) -> None:
+    """Change tap and gap length for this process (measured reliable: 34/34 everywhere, 25/25 in
+    single-player; 17/17 dropped 1 tap in 8)."""
+    global TAP_MS, GAP_MS
+    TAP_MS = tap_ms
+    GAP_MS = tap_ms if gap_ms is None else gap_ms
+
+
 class SwitchController:
     def __init__(self, port: str, baud: int = 115200):
         self.ser = serial.Serial(port, baud, timeout=1)
@@ -57,6 +65,15 @@ class SwitchController:
         # SET/WAIT/SET rather than the firmware's fixed 34 ms PRESS, so buttons use TAP_MS too
         self._send(Op.SET, int(button))
         self._send(Op.WAIT, TAP_MS)
+        self._send(Op.SET, 0)
+        self._send(Op.WAIT, GAP_MS)
+
+    def tap_together(self, hat: Hat, button: Button) -> None:
+        """A direction and a button in the same input slot."""
+        self._send(Op.HAT, int(hat))
+        self._send(Op.SET, int(button))
+        self._send(Op.WAIT, TAP_MS)
+        self._send(Op.HAT, int(Hat.CENTER))
         self._send(Op.SET, 0)
         self._send(Op.WAIT, GAP_MS)
 
@@ -114,4 +131,7 @@ def run_actions(ctl: "SwitchController", actions) -> None:
         elif k == "das_right": ctl.das_right()
         elif k == "soft_drop": ctl.hat_hold(Hat.DOWN, max(1, a.rows) * SOFT_DROP_MS_PER_ROW + SOFT_DROP_MARGIN_MS)
         elif k == "hard_drop": ctl.hard_drop()
+        elif "+" in k:
+            move, rot = k.split("+")
+            ctl.tap_together(Hat.LEFT if move == "left" else Hat.RIGHT, Button.A if rot == "cw" else Button.B)
         else: raise ValueError(k)
