@@ -112,6 +112,17 @@ svg .arrow{stroke:var(--ink-3);stroke-width:1.4;fill:none;marker-end:url(#ah)}
   <div class="pieces" aria-hidden="true"><i style="background:var(--I)"></i><i style="background:var(--O)"></i><i style="background:var(--T)"></i><i style="background:var(--S)"></i><i style="background:var(--Z)"></i><i style="background:var(--J)"></i><i style="background:var(--L)"></i></div>
 </header>
 
+<div class="note" style="margin-top:28px">
+<p><strong>Written before the hardware arrived; what changed once it did.</strong> The theory below still holds. These details were overtaken by measurement:</p>
+<ul>
+<li><strong>Firmware.</strong> No third-party library. The sketch subclasses the Arduino core's own HID class and appends the same report descriptor, and the HORI identity is passed as build properties by <code>tools/flash.sh</code> instead of editing <code>boards.txt</code>.</li>
+<li><strong>DAS.</strong> Measured on the real game: DAS 200 ms, auto-repeat 33 ms, taps of 34 ms with 34 ms gaps. From the spawn column, tapping beats a DAS slide at every distance, so the executor taps and keeps DAS for runs of six or more. It also presses rotate and sideways together where the order provably cannot matter.</li>
+<li><strong>Soft drops</strong> are closed-loop: down is held until the capture feed shows the placed piece on its landing row.</li>
+<li><strong>Vision</strong> gained a five-point vote per cell and a majority vote across frames at each spawn, because battle mode draws attack lines and sparks over the board. After a line-clearing move the predicted board is trusted, since the screen lags while rows collapse.</li>
+<li><strong>Strategy</strong> is height-aware: T-spin hunting below row 10, plain clearing above it, and targeting is set to K.O.s.</li>
+</ul>
+<p>The current map of the code is <code>docs/ARCHITECTURE.md</code>; the record of what was found and fixed is <code>docs/HISTORY.md</code>.</p>
+</div>
 <h2 id="pipeline" style="margin-top:40px">The pipeline in one picture</h2>
 <p>Every piece the bot places goes through the same five stages. Keep this picture in mind, because each chapter below zooms into one part of it.</p>
 <figure>

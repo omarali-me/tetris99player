@@ -1,5 +1,7 @@
 """Press one controller input on the Switch and save what the screen shows afterwards.
     tools/press.py A            tools/press.py DOWN          tools/press.py none   (just look)
+    tools/press.py RIGHT 1.2 out.png     # name, seconds to wait before the screenshot, output file
+The screenshot (960x540) goes to recordings/screen.png unless a file is given.
 Used for stepping through menus while watching the capture feed."""
 import sys, time
 import cv2, serial
@@ -9,7 +11,7 @@ from tetris99.control.protocol import Button, Hat, Op, encode
 
 what = sys.argv[1].upper() if len(sys.argv) > 1 else "NONE"
 wait = float(sys.argv[2]) if len(sys.argv) > 2 else 1.2
-out = sys.argv[3] if len(sys.argv) > 3 else "/tmp/claude-1000/-home-omar-tetris99player/3c4c597d-3cf2-49dd-98a7-4fe14b0813e6/scratchpad/screen.png"
+out = sys.argv[3] if len(sys.argv) > 3 else "recordings/screen.png"
 if what != "NONE":
     ser = serial.Serial(find_serial_port(), 115200, timeout=0.5); time.sleep(0.2)
     if what in Hat.__members__:
@@ -20,5 +22,7 @@ if what != "NONE":
 src = CaptureCard(6); it = src.frames()
 for _ in range(6): f = next(it)
 src.close()
+import os
+os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
 cv2.imwrite(out, cv2.resize(f, (960, 540)))
 print("pressed", what)
