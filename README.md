@@ -14,6 +14,8 @@ Switch dock ──HDMI──▶ capture card ──USB──▶ PC ──USB─�
 **Where it stands (2026-09-19).** Three outright wins against 98 CPUs (levels 1 and 3), 5th of 99 at
 CPU level 5, and online against real players a best of **7th of 99**, typically inside the top 20.
 About 1.3 pieces per second. See [docs/HISTORY.md](docs/HISTORY.md) for every result and fix.
+Result screenshots and match logs are deliberately not in the repository (they show other players'
+nicknames); the bot saves them locally under `recordings/`.
 
 ## Documentation
 
@@ -88,9 +90,25 @@ tools/               runnable scripts (viewers, calibration, hardware tests, mat
 firmware/switch_hid/ Arduino sketch that emulates the HORI pad
 config/              screen layout, Cold Clear weight sets, keyboard shortcuts
 tests/               pytest suite, all offline
-docs/                documentation and saved result screens
-recordings/          (gitignored) saved frames, match logs and result screens
+docs/                documentation
+recordings/          (gitignored) saved frames, match logs, result screens (recordings/results/)
 third_party/         (gitignored) Cold Clear checkout and build
 ```
 
 The per-file guide is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Credits
+
+- **[Cold Clear](https://github.com/MinusKelvin/cold-clear)** by MinusKelvin is the decision engine: the
+  move generator, board evaluation and search are entirely its work. It is licensed under the
+  Mozilla Public License 2.0. It is not included in this repository; the setup steps clone and build
+  it, and the bot calls it through its C API (`tetris99/engine/coldclear.py`).
+- The piece shapes and SRS wall-kick tables in `tetris99/engine/piece.py` were transcribed from Cold
+  Clear's `libtetris` so that the paths it returns replay identically here. The T-spin rule in
+  `tetris99/engine/game.py` follows the same source.
+- The idea of presenting an ATmega32U4 as a HORI Pokken Tournament Pro Pad comes from the Switch
+  homebrew community, notably progmem's Switch-Fightstick and celclow's SwitchControlLibrary, whose
+  HID report descriptor layout the firmware reproduces.
+- Tetris 99 and Nintendo Switch are trademarks of their owners. This is an unaffiliated hobby project.
+
+Everything else in this repository is released under [CC0 1.0](LICENSE).

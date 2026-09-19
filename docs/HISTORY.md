@@ -16,16 +16,16 @@ one commit per change with the reasoning in the message.
 | Pace test | 0.4 → 20, 32; 0.2 → **7**, **8** |
 | `fast` vs `clean` (both full speed, ~1.3 pieces/s) | fast 10, 52 (+1 void, network error) vs clean 16, 79, 32 |
 
-Best: **7th of 99**. Screens: `docs/online_12th_place.png`, `docs/online_10th_place.png`; all logs and
-result screens are in `recordings/matches/` (gitignored).
+Best: **7th of 99**. Logs and result screens are kept locally and are not in git (they show other
+players' nicknames): `recordings/matches/` for batch runs, `recordings/results/` for the milestone screens.
 
 ### CPU Battle (98 CPUs)
 
 | Level | Result |
 |---|---|
-| 1 | **1st**, 24 K.O.s, 221 pieces (`docs/first_win_cpu_battle.png`) |
-| 3 | **1st** twice, 25 K.O.s, 307 and 322 pieces (`docs/win_cpu_level3.png`) |
-| 5 | 25, 23, 19, **6**, 14, 11, 18, 36 (25 ms taps), **5** (fast settings), 21 (clean) (`docs/cpu_level5_6th.png`) |
+| 1 | **1st**, 24 K.O.s, 221 pieces |
+| 3 | **1st** twice, 25 K.O.s, 307 and 322 pieces |
+| 5 | 25, 23, 19, **6**, 14, 11, 18, 36 (25 ms taps), **5** (fast settings), 21 (clean) |
 
 ### Single player
 

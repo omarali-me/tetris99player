@@ -8,3 +8,12 @@ third_party/
 config/keymap.json
 tools/bin/
 *.egg-info/
+
+# Results and captures never go to git: they show player nicknames (ours and other people's)
+# and are large. Result screens are kept locally in recordings/results/.
+docs/*.png
+docs/*.jpg
+*.mp4
+*.webm
+*.log
+*.jsonl
