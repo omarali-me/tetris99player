@@ -10,8 +10,10 @@ from .protocol import Button, Hat, Op, encode
 # Tetris 99 handling, measured with tools/measure_timing.py on 2026-09-19 (150 Line Mode, level 1):
 #   press -> visible move 116 ms; taps of 17/25/34/50 ms all register; 3 taps at 34/34 and 25/25
 #   moved 3 columns 8/8 times (17/17 dropped one in 8); DAS 200 ms, ARR 33 ms; soft drop ~50 ms/row.
-TAP_MS = 34                 # 2 frames
-GAP_MS = 34                 # 2 frames between inputs
+# In battle mode (99 boards on screen) 34 ms taps were lost often while they were perfect in the
+# single-player modes, consistent with input being sampled less often there. 50 ms = 3 frames.
+TAP_MS = 50
+GAP_MS = 50
 DAS_MS = 560                # wall to wall: 200 + 9 x 33 + margin
 SOFT_DROP_MS_PER_ROW = 55   # soft drop is 20x gravity: ~50 ms/row at level 1, faster later
 SOFT_DROP_MARGIN_MS = 150   # covers input latency; over-holding after landing is harmless
@@ -52,7 +54,10 @@ class SwitchController:
         self._send(Op.RELEASE)
 
     def tap(self, button: Button) -> None:
-        self._send(Op.PRESS, int(button))
+        # SET/WAIT/SET rather than the firmware's fixed 34 ms PRESS, so buttons use TAP_MS too
+        self._send(Op.SET, int(button))
+        self._send(Op.WAIT, TAP_MS)
+        self._send(Op.SET, 0)
         self._send(Op.WAIT, GAP_MS)
 
     def hat_tap(self, hat: Hat) -> None:
